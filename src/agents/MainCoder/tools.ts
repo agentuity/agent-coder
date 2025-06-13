@@ -1,12 +1,16 @@
 import { z } from 'zod';
 import { readFile, writeFile, readdir, mkdir, stat } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
 import Riza from '@riza-io/api';
 import type { AgentContext } from '@agentuity/sdk';
 
+const execAsync = promisify(exec);
+
 // Riza client for code execution
 const riza = new Riza({
-	apiKey: process.env.RIZA_API_KEY
+	apiKey: process.env.RIZA_API_KEY || 'riza_01JXMK7QHNYYJWN38R66270DSR_01JXMK83XX761VMCMP7E0FKHJ0'
 });
 
 export interface Tool {
@@ -39,6 +43,13 @@ export const executeCodeSchema = z.object({
 	language: z.enum(['python', 'javascript', 'typescript']).describe('The programming language'),
 	code: z.string().describe('The code to execute'),
 	input: z.string().optional().describe('Optional input data for the code'),
+});
+
+// Shell Command Tools
+export const runCommandSchema = z.object({
+	command: z.string().describe('The shell command to execute'),
+	workingDir: z.string().optional().describe('The working directory to run the command in (default: current directory)'),
+	timeout: z.number().optional().describe('Timeout in milliseconds (default: 30000)'),
 });
 
 export const readFileTool: Tool = {
@@ -151,10 +162,116 @@ export const executeCodeTool: Tool = {
 	}
 };
 
+// Safety configuration for shell commands
+const ALLOWED_COMMANDS = [
+	'git', 'npm', 'yarn', 'bun', 'pnpm', 'node', 'python', 'python3', 'pip', 'pip3',
+	'cargo', 'rustc', 'go', 'tsc', 'deno', 'docker', 'make', 'cmake',
+	'ls', 'pwd', 'cat', 'echo', 'grep', 'find', 'wc', 'head', 'tail',
+	'mkdir', 'touch', 'cp', 'mv', 'chmod', 'chown',
+	'ps', 'kill', 'killall', 'jobs', 'bg', 'fg'
+];
+
+const BLOCKED_PATTERNS = [
+	/rm\s+.*-rf/, // Dangerous rm commands
+	/sudo/, // Privilege escalation
+	/su\s/, // User switching
+	/curl.*\|.*sh/, // Piped curl to shell
+	/wget.*\|.*sh/, // Piped wget to shell
+	/>\s*\/dev\//, // Writing to device files
+	/\/etc\//, // Modifying system files
+	/\/bin\//, // Modifying system binaries
+	/\/usr\//, // Modifying system directories
+	/mkfs/, // Format filesystem
+	/fdisk/, // Disk partitioning
+	/dd\s/, // Direct disk access
+];
+
+function isSafeCommand(command: string): { safe: boolean; reason?: string } {
+	// Check for blocked patterns
+	for (const pattern of BLOCKED_PATTERNS) {
+		if (pattern.test(command)) {
+			return { safe: false, reason: `Command contains blocked pattern: ${pattern}` };
+		}
+	}
+
+	// Extract the base command (first word)
+	const baseCommand = command.trim().split(/\s+/)[0];
+	
+	// Check if base command exists and is in allowed list
+	if (!baseCommand || !ALLOWED_COMMANDS.includes(baseCommand)) {
+		return { safe: false, reason: `Command '${baseCommand || 'empty'}' is not in the allowed list` };
+	}
+
+	return { safe: true };
+}
+
+export const runCommandTool: Tool = {
+	name: 'run_command',
+	description: 'Execute shell commands safely. Supports git, npm, build tools, and common Unix commands. Use this for running tests, building projects, git operations, etc.',
+	parameters: runCommandSchema,
+	execute: async (params, ctx) => {
+		try {
+			const { command, workingDir = '.', timeout = 30000 } = params as { 
+				command: string; 
+				workingDir?: string; 
+				timeout?: number; 
+			};
+
+			// Safety check
+			const safetyCheck = isSafeCommand(command);
+			if (!safetyCheck.safe) {
+				ctx.logger.warn(`Blocked unsafe command: ${command} - ${safetyCheck.reason}`);
+				return `❌ Command blocked for safety: ${safetyCheck.reason}`;
+			}
+
+			ctx.logger.info(`Executing command: ${command} in ${workingDir}`);
+
+			const result = await execAsync(command, {
+				cwd: workingDir,
+				timeout: timeout,
+				maxBuffer: 1024 * 1024, // 1MB buffer
+			});
+
+			const output = [
+				`✅ Command executed successfully: \`${command}\``,
+				result.stdout && `📄 stdout:\n\`\`\`\n${result.stdout.trim()}\n\`\`\``,
+				result.stderr && `⚠️ stderr:\n\`\`\`\n${result.stderr.trim()}\n\`\`\``,
+			].filter(Boolean).join('\n\n');
+
+			return output;
+		} catch (error) {
+			const { command } = params as { command: string };
+			ctx.logger.error(`Error executing command: ${command}`, error);
+			
+			if (error instanceof Error) {
+				// Handle different types of execution errors
+				if ('code' in error) {
+					const execError = error as { code: number; stdout?: string; stderr?: string };
+					const parts = [
+						`❌ Command failed with exit code ${execError.code}: \`${command}\``,
+						execError.stdout ? `📄 stdout:\n\`\`\`\n${execError.stdout.trim()}\n\`\`\`` : '',
+						execError.stderr ? `⚠️ stderr:\n\`\`\`\n${execError.stderr.trim()}\n\`\`\`` : ''
+					].filter(Boolean);
+					return parts.join('\n\n');
+				}
+				
+				if (error.message.includes('timeout')) {
+					return `⏱️ Command timed out: \`${command}\``;
+				}
+				
+				return `❌ Command execution error: ${error.message}`;
+			}
+			
+			return `❌ Unknown error executing command: \`${command}\``;
+		}
+	}
+};
+
 export const allTools: Tool[] = [
 	readFileTool,
 	writeFileTool,
 	listDirectoryTool,
 	createDirectoryTool,
 	executeCodeTool,
+	runCommandTool,
 ];
