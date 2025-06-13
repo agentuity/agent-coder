@@ -21,6 +21,17 @@ async function getAgentUrl(mode = 'auto') {
     return process.env.AGENT_URL;
   }
 
+  // Try to read from config file first
+  try {
+    const configContent = await readFile('agentuity-coder.config.json', 'utf-8');
+    const config = JSON.parse(configContent);
+    if (config.agentUrl && (mode === 'cloud' || config.mode === 'cloud')) {
+      return config.agentUrl;
+    }
+  } catch (error) {
+    // Config file doesn't exist or invalid, continue to dynamic detection
+  }
+
   // Use dynamic config detection to work for any developer
   try {
     const { generateAgentUrl } = await import('./cli/config-utils.js');
@@ -135,6 +146,8 @@ async function sendMessage(message, showSpinner = true, agentMode = 'auto') {
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
+
+
 
     if (spinner) spinner.stop();
 
