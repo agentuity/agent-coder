@@ -13,7 +13,8 @@
     "setup": "bun run cli/setup-command.ts",
     "cli": "bun run cli.js",
     "coder": "bun run cli.js",
-    "show-urls": "bun run scripts/show-agent-urls.js"
+    "show-urls": "bun run scripts/show-agent-urls.js",
+    "test-config": "bun run scripts/test-dynamic-config.js"
   },
   "bin": {
     "coder": "./cli.js"

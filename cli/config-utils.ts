@@ -26,30 +26,26 @@ interface AgentuityAgentList {
 }
 
 // Get agent configurations using Agentuity CLI
-export async function getAgentConfigs(): Promise<{ mainCoder: AgentConfig; cloudCoder: AgentConfig; port: number }> {
+export async function getAgentConfigs(): Promise<{ cloudCoder: AgentConfig; port: number }> {
   try {
     // Use official Agentuity CLI to get agent list
     const { stdout } = await execAsync('agentuity agent list --format json');
     const agentList: AgentuityAgentList = JSON.parse(stdout);
     
-    // Find agents by name (case-insensitive)
-    const mainCoderKey = Object.keys(agentList).find(key => 
-      agentList[key].agent.name.toLowerCase() === 'maincoder'
-    );
+    // Find CloudCoder agent (now the only agent)
     const cloudCoderKey = Object.keys(agentList).find(key => 
-      agentList[key].agent.name.toLowerCase() === 'cloudcoder'
+      agentList[key]?.agent?.name?.toLowerCase() === 'cloudcoder'
     );
-    
-    if (!mainCoderKey) {
-      throw new Error('MainCoder agent not found. Run "agentuity agent list" to see available agents.');
-    }
     
     if (!cloudCoderKey) {
       throw new Error('CloudCoder agent not found. Run "agentuity agent list" to see available agents.');
     }
     
-    const mainCoder = agentList[mainCoderKey].agent;
-    const cloudCoder = agentList[cloudCoderKey].agent;
+    const cloudCoder = agentList[cloudCoderKey]?.agent;
+    
+    if (!cloudCoder) {
+      throw new Error('Could not load agent details. Please check agent configuration.');
+    }
     
     // Get port from agentuity.yaml if available
     let port = 3500;
@@ -62,7 +58,6 @@ export async function getAgentConfigs(): Promise<{ mainCoder: AgentConfig; cloud
     }
     
     return { 
-      mainCoder: { id: mainCoder.id, name: mainCoder.name },
       cloudCoder: { id: cloudCoder.id, name: cloudCoder.name },
       port 
     };
@@ -75,27 +70,20 @@ export async function getAgentConfigs(): Promise<{ mainCoder: AgentConfig; cloud
     }
     
     return {
-      mainCoder: { id: 'agent_ae7cbe64f1c31943895f65422617cbf8', name: 'MainCoder' },
-      cloudCoder: { id: 'agent_bf7dce65e2c42854896e75533728dbf9', name: 'CloudCoder' },
+      cloudCoder: { id: 'agent_3918f7879297cf4159ea3d23b54f835b', name: 'CloudCoder' },
       port: 3500
     };
   }
 }
 
-// Generate agent URLs based on mode and configuration
-export async function generateAgentUrls(mode: 'local' | 'cloud'): Promise<{ mainCoderUrl: string; cloudCoderUrl: string }> {
-  const { mainCoder, cloudCoder, port } = await getAgentConfigs();
+// Generate agent URL based on mode and configuration
+export async function generateAgentUrl(mode: 'local' | 'cloud'): Promise<string> {
+  const { cloudCoder, port } = await getAgentConfigs();
   
   if (mode === 'local') {
-    return {
-      mainCoderUrl: `http://127.0.0.1:${port}/${mainCoder.id}`,
-      cloudCoderUrl: `http://127.0.0.1:${port}/${cloudCoder.id}`
-    };
-  } else {
-    // For cloud mode, use placeholder that user will replace
-    return {
-      mainCoderUrl: `https://your-agent.agentuity.cloud/${mainCoder.id}`,
-      cloudCoderUrl: `https://your-agent.agentuity.cloud/${cloudCoder.id}`
-    };
+    return `http://127.0.0.1:${port}/${cloudCoder.id}`;
   }
+  
+  // For cloud mode, use placeholder that user will replace
+  return `https://your-agent.agentuity.cloud/${cloudCoder.id}`;
 }

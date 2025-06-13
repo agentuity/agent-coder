@@ -14,10 +14,34 @@ import { ContinuationHandler } from './cli/continuation-handler.js';
 // Load environment variables
 dotenv.config();
 
-// Configuration
-const AGENT_URL =
-  process.env.AGENT_URL ||
-  'http://127.0.0.1:3500/agent_ae7cbe64f1c31943895f65422617cbf8';
+// Dynamic agent URL configuration - works for any developer's agent IDs
+async function getAgentUrl(mode = 'auto') {
+  // If explicitly set via environment, use that
+  if (process.env.AGENT_URL) {
+    return process.env.AGENT_URL;
+  }
+
+  // Use dynamic config detection to work for any developer
+  try {
+    const { generateAgentUrl } = await import('./cli/config-utils.js');
+    const url = await generateAgentUrl(mode === 'auto' ? 'local' : mode);
+    // Uncomment for debugging: console.log(`Using dynamically detected URL: ${url}`);
+    return url;
+  } catch (error) {
+    console.warn('Could not detect agent configuration. Using fallback.');
+    // Fallback for development - this will only work in this specific project
+    const fallbackId = 'agent_3918f7879297cf4159ea3d23b54f835b';
+    switch (mode) {
+      case 'local':
+        return `http://127.0.0.1:3500/${fallbackId}`;
+      case 'cloud':
+        return `https://your-deployment.agentuity.cloud/${fallbackId}`;
+      default:
+        return `http://127.0.0.1:3500/${fallbackId}`;
+    }
+  }
+}
+
 const API_KEY = process.env.API_KEY;
 
 if (!API_KEY) {
@@ -101,7 +125,7 @@ function showHeader() {
 }
 
 // Send message to agent with beautiful streaming and tool call handling
-async function sendMessage(message, showSpinner = true) {
+async function sendMessage(message, showSpinner = true, agentMode = 'auto') {
   let spinner;
 
   if (showSpinner) {
@@ -112,7 +136,8 @@ async function sendMessage(message, showSpinner = true) {
   }
 
   try {
-    const response = await fetch(AGENT_URL, {
+    const targetUrl = await getAgentUrl(agentMode);
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain',
@@ -163,9 +188,10 @@ async function sendMessage(message, showSpinner = true) {
     }
 
     // Check if response contains tool calls
+    const continuationUrl = await getAgentUrl(agentMode);
     const toolCallResult = await continuationHandler.handleToolCallFlow(
       fullResponse,
-      AGENT_URL,
+      continuationUrl,
       API_KEY,
       sessionId,
       message
@@ -203,7 +229,7 @@ async function sendMessage(message, showSpinner = true) {
 }
 
 // Interactive mode
-async function interactiveMode() {
+async function interactiveMode(agentMode = 'auto') {
   showHeader();
 
   console.log(
@@ -245,9 +271,9 @@ async function interactiveMode() {
       const matches = slashCommands.filter(cmd => cmd.name.startsWith(trimmedMessage));
       if (matches.length > 0) {
         console.log(chalk.yellow('💡 Did you mean:'));
-        matches.forEach(match => {
+        for (const match of matches) {
           console.log(`  ${chalk.cyan(match.name)} - ${chalk.dim(match.description)}`);
-        });
+        }
         continue;
       }
     }
@@ -285,18 +311,20 @@ async function interactiveMode() {
         continue;
 
       case '/context':
-        await sendMessage('What are we currently working on? Show me the work context.');
+        await sendMessage('What are we currently working on? Show me the work context.', true, agentMode);
         continue;
 
       case '/diff':
         await sendMessage(
-          'Show me the git diff of all changed files with beautiful formatting.'
+          'Show me the git diff of all changed files with beautiful formatting.',
+          true,
+          agentMode
         );
         continue;
 
       case '/diff-save': {
         const filename = `changes_${new Date().toISOString().slice(0, 10)}_${Date.now()}.patch`;
-        await sendMessage(`Save the full git diff to file: ${filename}`);
+        await sendMessage(`Save the full git diff to file: ${filename}`, true, agentMode);
         continue;
       }
 
@@ -306,7 +334,7 @@ async function interactiveMode() {
         process.exit(0);
     }
 
-    await sendMessage(message);
+    await sendMessage(message, true, agentMode);
   }
 }
 
@@ -332,11 +360,10 @@ async function detectProject() {
 
   if (detectedFiles.length > 0) {
     console.log(chalk.green('🔍 Project detected:'));
-    // biome-ignore lint/complexity/noForEach: <explanation>
-    detectedFiles.forEach((file) => {
+    for (const file of detectedFiles) {
       const icon = file === '.git' ? '📁' : '📄';
       console.log(`  ${icon} ${file}`);
-    });
+    }
     console.log();
   }
 }
@@ -354,7 +381,22 @@ program
   .option('-i, --interactive', 'Start interactive mode')
   .option('-p, --project <path>', 'Set project directory')
   .option('--session <id>', 'Use specific session ID')
+  .option('--local', 'Use local agent (localhost:3500)')
+  .option('--cloud', 'Use cloud agent (agentuity.cloud)')
   .action(async (messageArray, options) => {
+    // Determine agent mode
+    let agentMode = 'auto';
+    if (options.local && options.cloud) {
+      console.error(chalk.red('❌ Cannot specify both --local and --cloud'));
+      process.exit(1);
+    } else if (options.local) {
+      agentMode = 'local';
+      console.log(chalk.blue('🏠 Using local agent mode'));
+    } else if (options.cloud) {
+      agentMode = 'cloud';
+      console.log(chalk.cyan('☁️  Using cloud agent mode'));
+    }
+
     // Set custom session if provided
     if (options.session) {
       sessionId = options.session;
@@ -376,12 +418,12 @@ program
     await detectProject();
 
     if (options.interactive || messageArray.length === 0) {
-      await interactiveMode();
+      await interactiveMode(agentMode);
     } else {
       showHeader();
       const message = messageArray.join(' ');
       console.log(chalk.blue(`💬 You: ${message}\n`));
-      await sendMessage(message, true);
+      await sendMessage(message, true, agentMode);
       console.log(); // Final newline
     }
   });

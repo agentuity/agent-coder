@@ -69,9 +69,5 @@ bundler:
     - src/**
 # The agents that are part of this project
 agents:
-  - # The ID of the Agent which is automatically generated
-    id: agent_ae7cbe64f1c31943895f65422617cbf8
-    # The name of the Agent which is editable
-    name: MainCoder
   - id: agent_3918f7879297cf4159ea3d23b54f835b
     name: CloudCoder

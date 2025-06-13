@@ -4,7 +4,7 @@ import { writeFile, readFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import figlet from 'figlet';
 import boxen from 'boxen';
-import { generateAgentUrls } from './config-utils.js';
+import { generateAgentUrl } from './config-utils.js';
 
 interface ConfigData {
 	agentUrl: string;
@@ -17,9 +17,9 @@ interface ConfigData {
 }
 
 async function getDefaultConfig(): Promise<ConfigData> {
-	const { mainCoderUrl } = await generateAgentUrls('local');
+	const cloudCoderUrl = await generateAgentUrl('local');
 	return {
-		agentUrl: mainCoderUrl,
+		agentUrl: cloudCoderUrl,
 		apiKey: '',
 		sessionTimeout: 3600,
 		maxFileSize: '10MB',
@@ -96,8 +96,8 @@ async function askQuestions(existingConfig?: Partial<ConfigData>): Promise<Confi
 			name: 'agentUrl',
 			message: 'Agent URL:',
 			default: async (answers: any) => {
-				const { mainCoderUrl } = await generateAgentUrls(answers.mode);
-				return existingConfig?.agentUrl || mainCoderUrl;
+				const cloudCoderUrl = await generateAgentUrl(answers.mode);
+				return existingConfig?.agentUrl || cloudCoderUrl;
 			},
 			validate: (input: string) => {
 				if (!input.startsWith('http')) {
