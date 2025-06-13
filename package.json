@@ -12,10 +12,12 @@
     "prestart": "agentuity bundle",
     "start": "bun run .agentuity/index.js",
     "setup": "bun run cli/setup-command.ts",
+    "setup-global": "bun run setup && echo 'Run: coder --interactive'",
     "cli": "bun run cli.js",
     "coder": "bun run cli.js",
     "show-urls": "bun run scripts/show-agent-urls.js",
-    "test-config": "bun run scripts/test-dynamic-config.js"
+    "test-config": "bun run scripts/test-dynamic-config.js",
+    "test-install": "bun run scripts/test-global-install.js"
   },
   "bin": {
     "coder": "./cli.js"

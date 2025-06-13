@@ -246,10 +246,6 @@ agentuity.yaml                    # Cloud configuration
 - Test with subset of tools first
 - Full feature parity over time
 
-### Step 3: Package and Distribute
-- Create installer/setup wizard
-- Documentation and examples
-- Community feedback and iteration
 
 ## Next Steps
 

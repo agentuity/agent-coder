@@ -19,9 +19,9 @@ function createRizaClient() {
 
 // Logger interface
 interface Logger {
-  info: (message: string, ...args: any[]) => void;
-  error: (message: string, ...args: any[]) => void;
-  warn: (message: string, ...args: any[]) => void;
+  info: (message: string, ...args: unknown[]) => void;
+  error: (message: string, ...args: unknown[]) => void;
+  warn: (message: string, ...args: unknown[]) => void;
 }
 
 // Mock KV store for local execution
@@ -459,9 +459,9 @@ export class ToolProxy {
 
   constructor(logger?: Logger) {
     this.logger = logger || {
-      info: (msg: string, ...args: any[]) => console.log(`[INFO] ${msg}`, ...args),
-      error: (msg: string, ...args: any[]) => console.error(`[ERROR] ${msg}`, ...args),
-      warn: (msg: string, ...args: any[]) => console.warn(`[WARN] ${msg}`, ...args),
+      info: (msg: string, ...args: unknown[]) => console.log(`[INFO] ${msg}`, ...args),
+      error: (msg: string, ...args: unknown[]) => console.error(`[ERROR] ${msg}`, ...args),
+      warn: (msg: string, ...args: unknown[]) => console.warn(`[WARN] ${msg}`, ...args),
     };
     
     this.kv = new MockKV();
@@ -482,7 +482,7 @@ export class ToolProxy {
       }
 
       const executor = toolExecutors[toolName as keyof typeof toolExecutors];
-      const result = await executor(parameters as any, this.ctx);
+      const result = await executor(parameters as never, this.ctx);
 
       return {
         id,

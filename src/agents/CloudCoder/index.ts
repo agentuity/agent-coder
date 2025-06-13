@@ -226,7 +226,7 @@ export default async function CloudAgent(
 				}
 			});
 			return acc;
-		}, {} as Record<string, any>);
+		}, {} as Record<string, ReturnType<typeof tool>>);
 
 		// Stream response with tool support
 		const result = await streamText({
@@ -242,7 +242,7 @@ export default async function CloudAgent(
 		const responseStream = new ReadableStream({
 			async start(controller) {
 				let assistantMessage = '';
-				let toolCallsToSend: ToolCall[] = [];
+				const toolCallsToSend: ToolCall[] = [];
 				let waitingForToolResults = false;
 
 				try {

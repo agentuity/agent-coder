@@ -8,7 +8,7 @@ async function testRizaErrorHandling() {
   
   // Temporarily remove RIZA_API_KEY
   const originalKey = process.env.RIZA_API_KEY;
-  delete process.env.RIZA_API_KEY;
+  process.env.RIZA_API_KEY = undefined;
   
   try {
     const toolProxy = new ToolProxy();

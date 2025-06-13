@@ -266,16 +266,13 @@ async function interactiveMode(agentMode = 'auto') {
     // Handle special commands and suggestions
     const trimmedMessage = message.toLowerCase().trim();
     
-    // Check for partial slash commands and suggest
-    if (trimmedMessage.startsWith('/') && !slashCommands.some(cmd => cmd.name === trimmedMessage)) {
-      const matches = slashCommands.filter(cmd => cmd.name.startsWith(trimmedMessage));
-      if (matches.length > 0) {
-        console.log(chalk.yellow('💡 Did you mean:'));
-        for (const match of matches) {
-          console.log(`  ${chalk.cyan(match.name)} - ${chalk.dim(match.description)}`);
-        }
-        continue;
+    // Show available commands when user types just "/"
+    if (trimmedMessage === '/') {
+      console.log(chalk.yellow('💡 Available commands:'));
+      for (const command of slashCommands) {
+        console.log(`  ${chalk.cyan(command.name)} - ${chalk.dim(command.description)}`);
       }
+      continue;
     }
     
     switch (trimmedMessage) {

@@ -35,27 +35,31 @@ git clone <your-repo>
 cd CodingAgent
 bun install
 
+# Run setup wizard (creates global 'coder' command)
+bun run setup
+
 # Start local development server
 bun run dev
 ```
 
 ### 2. Use the CLI
 ```bash
-# Interactive mode (recommended)
+# Global command (after setup)
+coder --interactive                # Interactive mode (recommended)
+coder "What files are in this project?"
+coder "Create a FastAPI server with authentication"
+
+# Alternative: Development mode
 bun run cli --interactive
 
-# Direct commands
-bun run cli "What files are in this project?"
-bun run cli "Create a FastAPI server with authentication"
-
 # Local vs Cloud modes
-bun run cli --local "analyze this codebase"
-bun run cli --cloud "help with debugging"  # (when cloud configured)
+coder --local "analyze this codebase"
+coder --cloud "help with debugging"  # (when cloud configured)
 ```
 
 ### 3. Example Session
 ```bash
-$ bun run cli --interactive
+$ coder --interactive
 
    ___          _  _                 _                    _
   / __| ___  __| |(_) _ _   __ _    /_\   __ _  ___  _ _ | |_
