@@ -30,6 +30,7 @@ interface ToolResult {
 }
 
 interface ContinuationRequest {
+	type: 'continuation';
 	sessionId: string;
 	toolResults: ToolResult[];
 	originalMessage?: string;
@@ -200,39 +201,120 @@ export default async function CloudAgent(
 			// Regular user message
 			userMessage = rawData;
 
-			// Add user message to context
+			// Add user message to context (only for non-continuation requests)
+			if (userMessage?.trim()) {
+				conversationContext.messages.push({
+					role: 'user',
+					content: userMessage.trim(),
+					timestamp: Date.now()
+				});
+			}
+		}
+
+		// Handle continuation differently
+		if (isContinuation && parsedData) {
+			// Process tool results and return a simple response
+			let responseText = '\n📨 Received tool results:\n';
+			
+			for (const result of toolResults) {
+				if (result.success) {
+					responseText += `✅ ${result.id}: Success\n${result.result}\n\n`;
+				} else {
+					responseText += `❌ ${result.id}: Error\n${result.error}\n\n`;
+				}
+			}
+			
+			responseText += 'Tool execution completed. Based on the results, I can continue helping you with your task.';
+			
+			// Add assistant response to context
 			conversationContext.messages.push({
-				role: 'user',
-				content: userMessage,
+				role: 'assistant',
+				content: responseText,
 				timestamp: Date.now()
+			});
+			
+			// Save updated context
+			await ctx.kv.set('default', contextKey, JSON.stringify(conversationContext), { ttl: 3600 * 24 * 7 });
+			
+			return await resp.text(responseText);
+		}
+
+		// Prepare messages for AI - filter out empty content
+		const messages = conversationContext.messages
+			.filter(msg => msg.content?.trim()?.length > 0)
+			.map(msg => ({
+				role: msg.role,
+				content: msg.content.trim()
+			}));
+
+		// Ensure we have at least one message
+		if (messages.length === 0) {
+			messages.push({
+				role: 'user',
+				content: userMessage || 'Hello'
 			});
 		}
 
-		// Prepare messages for AI
-		const messages = conversationContext.messages.map(msg => ({
-			role: msg.role,
-			content: msg.content
-		}));
-
 		// Create mock tools that just capture calls instead of executing
-		const cloudTools = Object.entries(toolSchemas).reduce((acc, [toolName, schema]) => {
-			acc[toolName] = tool({
-				description: `${toolName.replace('_', ' ')} tool - will be executed on local machine`,
-				parameters: schema,
-				execute: async (params) => {
-					// This will never actually be called in cloud mode
-					// The AI SDK will capture the tool call and we'll stream it
-					return `Tool call captured: ${toolName}`;
-				}
-			});
-			return acc;
-		}, {} as Record<string, ReturnType<typeof tool>>);
+		const cloudTools = {
+			read_file: tool({
+				description: 'Read file - will be executed on local machine',
+				parameters: toolSchemas.read_file,
+				execute: async () => 'Tool call captured'
+			}),
+			write_file: tool({
+				description: 'Write file - will be executed on local machine',
+				parameters: toolSchemas.write_file,
+				execute: async () => 'Tool call captured'
+			}),
+			list_directory: tool({
+				description: 'List directory - will be executed on local machine',
+				parameters: toolSchemas.list_directory,
+				execute: async () => 'Tool call captured'
+			}),
+			create_directory: tool({
+				description: 'Create directory - will be executed on local machine',
+				parameters: toolSchemas.create_directory,
+				execute: async () => 'Tool call captured'
+			}),
+			execute_code: tool({
+				description: 'Execute code - will be executed on local machine',
+				parameters: toolSchemas.execute_code,
+				execute: async () => 'Tool call captured'
+			}),
+			run_command: tool({
+				description: 'Run command - will be executed on local machine',
+				parameters: toolSchemas.run_command,
+				execute: async () => 'Tool call captured'
+			}),
+			diff_files: tool({
+				description: 'Diff files - will be executed on local machine',
+				parameters: toolSchemas.diff_files,
+				execute: async () => 'Tool call captured'
+			}),
+			git_diff: tool({
+				description: 'Git diff - will be executed on local machine',
+				parameters: toolSchemas.git_diff,
+				execute: async () => 'Tool call captured'
+			}),
+			set_work_context: tool({
+				description: 'Set work context - will be executed on local machine',
+				parameters: toolSchemas.set_work_context,
+				execute: async () => 'Tool call captured'
+			}),
+			get_work_context: tool({
+				description: 'Get work context - will be executed on local machine',
+				parameters: toolSchemas.get_work_context,
+				execute: async () => 'Tool call captured'
+			})
+		};
 
 		// Stream response with tool support
 		const result = await streamText({
 			model: anthropic("claude-4-sonnet-20250514"),
 			system: SYSTEM_PROMPT,
 			messages,
+			// @ts-ignore - Type workaround for cloud mode
 			tools: cloudTools,
 			maxTokens: 4000,
 			maxSteps: 5, // Allow multiple tool calls
@@ -273,11 +355,7 @@ export default async function CloudAgent(
 								break;
 							}
 
-							case 'tool-result': {
-								// In cloud mode, we don't get tool results here
-								// They come back via continuation request
-								break;
-							}
+							// tool-result is handled via continuation requests in cloud mode
 
 							case 'finish':
 								// Stream is complete
@@ -301,21 +379,7 @@ export default async function CloudAgent(
 						controller.enqueue('\n⏳ Waiting for local tool execution...\n');
 					}
 
-					// Handle tool results if this was a continuation
-					if (toolResults.length > 0) {
-						controller.enqueue('\n📨 Received tool results:\n');
-						for (const result of toolResults) {
-							if (result.success) {
-								controller.enqueue(`✅ ${result.id}: Success\n${result.result}\n\n`);
-							} else {
-								controller.enqueue(`❌ ${result.id}: Error\n${result.error}\n\n`);
-							}
-						}
-
-						// Get the final text content after processing tool results
-						const finalText = await result.text;
-						assistantMessage = finalText;
-					}
+					// Tool results are handled separately for continuation requests
 
 					// Add assistant response to context
 					conversationContext.messages.push({

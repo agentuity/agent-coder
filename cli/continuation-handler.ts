@@ -95,21 +95,36 @@ export class ContinuationHandler {
   ): Promise<Response> {
     console.log(chalk.blue('📨 Sending tool results back to agent...\n'));
     
-    const response = await fetch(agentUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+    try {
+      const response = await fetch(agentUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain',
+          'Authorization': `Bearer ${apiKey}`,
+          'x-session-id': continuationRequest.sessionId,
+        },
+        body: JSON.stringify(continuationRequest),
+      });
+
+      if (!response.ok) {
+        console.error(chalk.red(`HTTP Error: ${response.status} ${response.statusText}`));
+        const errorText = await response.text().catch(() => 'Could not read error response');
+        console.error(chalk.red(`Response body: ${errorText}`));
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return response;
+    } catch (error) {
+      console.error(chalk.red('Fetch error details:'), error);
+      console.error(chalk.red(`URL: ${agentUrl}`));
+      console.error(chalk.red(`Headers: ${JSON.stringify({
+        'Content-Type': 'text/plain',
+        'Authorization': `Bearer ${apiKey.substring(0, 10)}...`,
         'x-session-id': continuationRequest.sessionId,
-      },
-      body: JSON.stringify(continuationRequest),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      })}`));
+      console.error(chalk.red(`Body length: ${JSON.stringify(continuationRequest).length} chars`));
+      throw error;
     }
-
-    return response;
   }
 
   // Handle complete tool call flow
