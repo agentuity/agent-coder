@@ -24,7 +24,10 @@ async function getAgentUrl(mode = 'auto') {
   // Try to read from config file only for cloud mode (not auto mode)
   if (mode === 'cloud') {
     try {
-      const configContent = await readFile('agentuity-coder.config.json', 'utf-8');
+      const configContent = await readFile(
+        'agentuity-coder.config.json',
+        'utf-8'
+      );
       const config = JSON.parse(configContent);
       if (config.agentUrl) {
         return config.agentUrl;
@@ -80,15 +83,20 @@ const slashCommands = [
   { name: '/session', description: 'Start a new session' },
   { name: '/context', description: 'Show current work context' },
   { name: '/diff', description: 'Show git diff with beautiful formatting' },
-  { name: '/diff-save', description: 'Save full diff to file for large changes' },
+  {
+    name: '/diff-save',
+    description: 'Save full diff to file for large changes',
+  },
   { name: '/quit', description: 'Exit the CLI' },
 ];
 
 // Smart input handler with command hints
 async function getInput() {
   // Show available slash commands hint
-  const commandHint = chalk.dim('\n💡 Type "/" for commands: /help /clear /session /context /diff /diff-save /quit\n');
-  
+  const commandHint = chalk.dim(
+    '\n💡 Type "/" for commands: /help /clear /session /context /diff /diff-save /quit\n'
+  );
+
   const { message } = await inquirer.prompt([
     {
       type: 'input',
@@ -98,13 +106,18 @@ async function getInput() {
       transformer: (input) => {
         // Show available commands only when user types just "/"
         if (input === '/') {
-          return chalk.cyan('/') + chalk.dim(' (type command name: help, clear, session, context, diff, diff-save, quit)');
+          return (
+            chalk.cyan('/') +
+            chalk.dim(
+              ' (type command name: help, clear, session, context, diff, diff-save, quit)'
+            )
+          );
         }
         return input;
-      }
-    }
+      },
+    },
   ]);
-  
+
   return message;
 }
 
@@ -113,7 +126,7 @@ function showHeader() {
   console.clear();
   console.log(
     chalk.cyan(
-      figlet.textSync('Coding Agent', {
+      figlet.textSync('Agentuity Coder', {
         font: 'Small',
         horizontalLayout: 'fitted',
       })
@@ -149,8 +162,6 @@ async function sendMessage(message, showSpinner = true, agentMode = 'auto') {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-
-
     if (spinner) spinner.stop();
 
     console.log(chalk.green('\n🤖 Agent:'));
@@ -170,7 +181,10 @@ async function sendMessage(message, showSpinner = true, agentMode = 'auto') {
 
       // Add enhanced formatting for diff content and tool calls
       const formattedChunk = chunk
-        .replace(/🔧 Requesting tool execution:/g, chalk.blue('🔧 Requesting tool execution:'))
+        .replace(
+          /🔧 Requesting tool execution:/g,
+          chalk.blue('🔧 Requesting tool execution:')
+        )
         .replace(/📋 Parameters:/g, chalk.cyan('📋 Parameters:'))
         .replace(/✅ Tool completed/g, chalk.green('✅ Tool completed'))
         .replace(
@@ -197,22 +211,28 @@ async function sendMessage(message, showSpinner = true, agentMode = 'auto') {
       message
     );
 
-    if (toolCallResult.needsContinuation && toolCallResult.continuationResponse) {
+    if (
+      toolCallResult.needsContinuation &&
+      toolCallResult.continuationResponse
+    ) {
       // Stream the continuation response
       console.log(chalk.green('\n🤖 Agent (continued):'));
       console.log(chalk.dim('─'.repeat(60)));
 
       const contReader = toolCallResult.continuationResponse.body.getReader();
-      
+
       while (true) {
         const { done, value } = await contReader.read();
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        
+
         // Format continuation response
         const formattedChunk = chunk
-          .replace(/📨 Received tool results:/g, chalk.green('📨 Received tool results:'))
+          .replace(
+            /📨 Received tool results:/g,
+            chalk.green('📨 Received tool results:')
+          )
           .replace(/✅ (.*?): Success/g, chalk.green('✅ $1: Success'))
           .replace(/❌ (.*?): Error/g, chalk.red('❌ $1: Error'));
 
@@ -265,16 +285,18 @@ async function interactiveMode(agentMode = 'auto') {
 
     // Handle special commands and suggestions
     const trimmedMessage = message.toLowerCase().trim();
-    
+
     // Show available commands when user types just "/"
     if (trimmedMessage === '/') {
       console.log(chalk.yellow('💡 Available commands:'));
       for (const command of slashCommands) {
-        console.log(`  ${chalk.cyan(command.name)} - ${chalk.dim(command.description)}`);
+        console.log(
+          `  ${chalk.cyan(command.name)} - ${chalk.dim(command.description)}`
+        );
       }
       continue;
     }
-    
+
     switch (trimmedMessage) {
       case '/help':
         console.log(
@@ -308,7 +330,11 @@ async function interactiveMode(agentMode = 'auto') {
         continue;
 
       case '/context':
-        await sendMessage('What are we currently working on? Show me the work context.', true, agentMode);
+        await sendMessage(
+          'What are we currently working on? Show me the work context.',
+          true,
+          agentMode
+        );
         continue;
 
       case '/diff':
@@ -321,7 +347,11 @@ async function interactiveMode(agentMode = 'auto') {
 
       case '/diff-save': {
         const filename = `changes_${new Date().toISOString().slice(0, 10)}_${Date.now()}.patch`;
-        await sendMessage(`Save the full git diff to file: ${filename}`, true, agentMode);
+        await sendMessage(
+          `Save the full git diff to file: ${filename}`,
+          true,
+          agentMode
+        );
         continue;
       }
 
