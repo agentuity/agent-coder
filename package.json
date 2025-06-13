@@ -12,7 +12,8 @@
     "start": "bun run .agentuity/index.js",
     "setup": "bun run cli/setup-command.ts",
     "cli": "bun run cli.js",
-    "coder": "bun run cli.js"
+    "coder": "bun run cli.js",
+    "show-urls": "bun run scripts/show-agent-urls.js"
   },
   "bin": {
     "coder": "./cli.js"
@@ -48,6 +49,7 @@
     "figlet": "^1.8.1",
     "inquirer": "^12.6.3",
     "ora": "^8.2.0",
+    "yaml": "^2.8.0",
     "zod": "^3.22.4"
   },
   "module": "index.ts"

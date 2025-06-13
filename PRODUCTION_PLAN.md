@@ -161,7 +161,14 @@ interface SecurityPolicy {
 - ✅ **Secret leak prevention**: No API keys committed to code
 - ✅ **Environment-based config**: All secrets via environment variables
 - ✅ **Error handling**: Clear messages for missing API keys
+- ✅ **Dynamic agent IDs**: No hardcoded agent IDs in URLs
 - User education on API key management
+
+### E. Dynamic Configuration
+- ✅ **Agent ID detection**: Automatically reads from `agentuity.yaml`
+- ✅ **URL generation**: Dynamic agent URLs for any developer setup
+- ✅ **Fallback handling**: Graceful degradation if config unavailable
+- ✅ **Developer experience**: Works out-of-the-box after git clone
 
 ## 4. Implementation Phases
 
