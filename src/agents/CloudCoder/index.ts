@@ -215,7 +215,7 @@ export default async function CloudAgent(
 		if (isContinuation && parsedData) {
 			// Process tool results and return a simple response
 			let responseText = '\n📨 Received tool results:\n';
-			
+
 			for (const result of toolResults) {
 				if (result.success) {
 					responseText += `✅ ${result.id}: Success\n${result.result}\n\n`;
@@ -223,19 +223,19 @@ export default async function CloudAgent(
 					responseText += `❌ ${result.id}: Error\n${result.error}\n\n`;
 				}
 			}
-			
+
 			responseText += 'Tool execution completed. Based on the results, I can continue helping you with your task.';
-			
+
 			// Add assistant response to context
 			conversationContext.messages.push({
 				role: 'assistant',
 				content: responseText,
 				timestamp: Date.now()
 			});
-			
+
 			// Save updated context
 			await ctx.kv.set('default', contextKey, JSON.stringify(conversationContext), { ttl: 3600 * 24 * 7 });
-			
+
 			return await resp.text(responseText);
 		}
 
@@ -316,8 +316,7 @@ export default async function CloudAgent(
 			messages,
 			// @ts-ignore - Type workaround for cloud mode
 			tools: cloudTools,
-			maxTokens: 4000,
-			maxSteps: 5, // Allow multiple tool calls
+			maxSteps: 10, // Allow multiple tool calls
 		});
 
 		// Create response stream that handles tool calls differently
