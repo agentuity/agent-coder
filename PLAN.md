@@ -26,10 +26,10 @@
 **Estimated Time**: 1-2 weeks  
 
 #### Tasks:
-- [ ] **Shell Command Tool** - Execute git, npm, build commands safely
-- [ ] **Enhanced CLI Client** - Project-aware, better UX, interactive mode
-- [ ] **Diff Visualization** - Integration with delta or built-in colored diffs
-- [ ] **Project Detection** - Auto-detect git repos, package.json, etc.
+- [x] **Shell Command Tool** - Execute git, npm, build commands safely
+- [x] **Enhanced CLI Client** - Project-aware, better UX, interactive mode
+- [x] **Diff Visualization** - Integration with delta or built-in colored diffs
+- [x] **Project Detection** - Auto-detect git repos, package.json, etc.
 - [ ] **File Watching** - Monitor changes and sync with agent
 
 ## 📅 Roadmap

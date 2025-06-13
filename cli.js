@@ -1,0 +1,287 @@
+#!/usr/bin/env node
+
+import { Command } from 'commander';
+import chalk from 'chalk';
+import ora from 'ora';
+import inquirer from 'inquirer';
+import figlet from 'figlet';
+import boxen from 'boxen';
+import dotenv from 'dotenv';
+import { readFile, writeFile, access } from 'node:fs/promises';
+import { join } from 'node:path';
+
+// Load environment variables
+dotenv.config();
+
+// Configuration
+const AGENT_URL =
+  process.env.AGENT_URL ||
+  'http://127.0.0.1:3500/agent_ae7cbe64f1c31943895f65422617cbf8';
+const API_KEY = process.env.API_KEY;
+
+if (!API_KEY) {
+  console.error(
+    chalk.red('❌ Error: API_KEY environment variable is not set.')
+  );
+  console.error(
+    chalk.yellow('💡 Please create a .env file with API_KEY=your_key')
+  );
+  process.exit(1);
+}
+
+// Session management
+let sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+// Display beautiful header
+function showHeader() {
+  console.clear();
+  console.log(
+    chalk.cyan(
+      figlet.textSync('Coding Agent', {
+        font: 'Small',
+        horizontalLayout: 'fitted',
+      })
+    )
+  );
+  console.log(chalk.dim('  Powered by Agentuity & Claude 4 Sonnet\n'));
+}
+
+// Send message to agent with beautiful streaming
+async function sendMessage(message, showSpinner = true) {
+  let spinner;
+
+  if (showSpinner) {
+    spinner = ora({
+      text: chalk.blue('🤖 Agent is thinking...'),
+      spinner: 'dots',
+    }).start();
+  }
+
+  try {
+    const response = await fetch(AGENT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain',
+        Authorization: `Bearer ${API_KEY}`,
+        'x-session-id': sessionId,
+      },
+      body: message,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    if (spinner) spinner.stop();
+
+    console.log(chalk.green('\n🤖 Agent:'));
+    console.log(chalk.dim('─'.repeat(60)));
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+
+      // Add enhanced formatting for diff content and tool calls
+      const formattedChunk = chunk
+      .replace(/🔧 Using tool:/g, chalk.blue('🔧 Using tool:'))
+      .replace(/📋 Parameters:/g, chalk.cyan('📋 Parameters:'))
+      .replace(/✅ Tool completed/g, chalk.green('✅ Tool completed'))
+        .replace(/💡 \*\*Large diff detected!\*\*/g, chalk.yellow('💡 **Large diff detected!**'))
+        .replace(/📊 \*\*Diff Statistics:\*\*/g, chalk.cyan('📊 **Diff Statistics:**'))
+        .replace(/🎨 \*\*Git Diff\*\*/g, chalk.magenta('🎨 **Git Diff**'))
+        .replace(/📄 \*\*Git Diff\*\*/g, chalk.blue('📄 **Git Diff**'));
+      
+      process.stdout.write(formattedChunk);
+    }
+
+    console.log('\n' + chalk.dim('─'.repeat(60)));
+  } catch (error) {
+    if (spinner) spinner.fail(chalk.red('Failed to communicate with agent'));
+    console.error(chalk.red(`❌ Error: ${error.message}`));
+  }
+}
+
+// Interactive mode
+async function interactiveMode() {
+  showHeader();
+
+  console.log(
+    boxen(
+      `${chalk.green('🚀 Interactive Mode')}\n\n` +
+        `${chalk.cyan('Commands:')}\n` +
+        `  ${chalk.white('/help')}     - Show this help\n` +
+        `  ${chalk.white('/clear')}    - Clear screen\n` +
+        `  ${chalk.white('/session')}  - New session\n` +
+        `  ${chalk.white('/diff')}     - Show git diff\n` +
+        `  ${chalk.white('/diff-save')} - Save full diff to file\n` +
+        `  ${chalk.white('/quit')}     - Exit\n\n` +
+        `${chalk.yellow('💡 Tip:')} Just type your coding questions naturally!`,
+      {
+        padding: 1,
+        margin: 1,
+        borderStyle: 'round',
+        borderColor: 'cyan',
+      }
+    )
+  );
+
+  // Welcome message
+  // await sendMessage("Hello! I'm your coding agent. What would you like to work on today?");
+
+  while (true) {
+    console.log(); // Empty line for spacing
+
+    const { message } = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'message',
+        message: chalk.blue('You:'),
+        prefix: '💬',
+      },
+    ]);
+
+    if (!message.trim()) continue;
+
+    // Handle special commands
+    switch (message.toLowerCase().trim()) {
+      case '/help':
+        console.log(
+          boxen(
+            `${chalk.green('Available Commands:')}\n\n` +
+              `${chalk.white('/help')}     - Show this help\n` +
+              `${chalk.white('/clear')}    - Clear screen and show header\n` +
+              `${chalk.white('/session')}  - Start a new session\n` +
+              `${chalk.white('/diff')}     - Show git diff with beautiful formatting\n` +
+              `${chalk.white('/diff-save')} - Save full diff to file for large changes\n` +
+              `${chalk.white('/quit')}     - Exit the CLI\n\n` +
+              `${chalk.cyan('Examples:')}\n` +
+              `• "What does package.json contain?"\n` +
+              `• "Create a FastAPI server with authentication"\n` +
+              `• "Fix the bug in src/main.py"\n` +
+              `• "Run the tests and show me the results"`,
+            { padding: 1, borderStyle: 'round', borderColor: 'green' }
+          )
+        );
+        continue;
+
+      case '/clear':
+        showHeader();
+        continue;
+
+      case '/session':
+        sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        console.log(chalk.green('✨ New session started!'));
+        continue;
+
+      case '/diff':
+        await sendMessage('Show me the git diff of all changed files with beautiful formatting.');
+        continue;
+
+      case '/diff-save': {
+        const filename = `changes_${new Date().toISOString().slice(0, 10)}_${Date.now()}.patch`;
+        await sendMessage(`Save the full git diff to file: ${filename}`);
+        continue;
+      }
+
+      case '/quit':
+      case '/exit':
+        console.log(chalk.yellow('👋 Goodbye! Happy coding!'));
+        process.exit(0);
+    }
+
+    await sendMessage(message);
+  }
+}
+
+// Project detection
+async function detectProject() {
+  const projectFiles = [
+    'package.json',
+    'pyproject.toml',
+    'go.mod',
+    'Cargo.toml',
+    '.git',
+  ];
+  const detectedFiles = [];
+
+  for (const file of projectFiles) {
+    try {
+      await access(file);
+      detectedFiles.push(file);
+    } catch {
+      // File doesn't exist, ignore
+    }
+  }
+
+  if (detectedFiles.length > 0) {
+    console.log(chalk.green('🔍 Project detected:'));
+    detectedFiles.forEach((file) => {
+      const icon = file === '.git' ? '📁' : '📄';
+      console.log(`  ${icon} ${file}`);
+    });
+    console.log();
+  }
+}
+
+// Setup CLI commands
+const program = new Command();
+
+program
+  .name('coder')
+  .description('AI-powered coding assistant')
+  .version('1.0.0');
+
+program
+  .argument('[message...]', 'Direct message to the coding agent')
+  .option('-i, --interactive', 'Start interactive mode')
+  .option('-p, --project <path>', 'Set project directory')
+  .option('--session <id>', 'Use specific session ID')
+  .action(async (messageArray, options) => {
+    // Set custom session if provided
+    if (options.session) {
+      sessionId = options.session;
+    }
+
+    // Change directory if project path specified
+    if (options.project) {
+      try {
+        process.chdir(options.project);
+        console.log(chalk.blue(`📁 Working in: ${process.cwd()}`));
+      } catch (error) {
+        console.error(
+          chalk.red(`❌ Cannot access directory: ${options.project}`)
+        );
+        process.exit(1);
+      }
+    }
+
+    await detectProject();
+
+    if (options.interactive || messageArray.length === 0) {
+      await interactiveMode();
+    } else {
+      showHeader();
+      const message = messageArray.join(' ');
+      console.log(chalk.blue(`💬 You: ${message}\n`));
+      await sendMessage(message, true);
+      console.log(); // Final newline
+    }
+  });
+
+// Handle errors gracefully
+process.on('SIGINT', () => {
+  console.log(chalk.yellow('\n👋 Goodbye! Happy coding!'));
+  process.exit(0);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error(chalk.red('❌ Unexpected error:'), error.message);
+  process.exit(1);
+});
+
+program.parse();

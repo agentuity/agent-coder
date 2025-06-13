@@ -9,7 +9,12 @@
     "format": "biome format --write .",
     "lint": "biome lint .",
     "prestart": "agentuity bundle",
-    "start": "bun run .agentuity/index.js"
+    "start": "bun run .agentuity/index.js",
+    "cli": "bun run cli.js",
+    "coder": "bun run cli.js"
+  },
+  "bin": {
+    "coder": "./cli.js"
   },
   "keywords": [
     "agentuity",
@@ -31,7 +36,15 @@
     "@ai-sdk/anthropic": "^1.2.12",
     "@riza-io/api": "^0.3.0",
     "ai": "^4.3.16",
+    "boxen": "^8.0.1",
+    "chalk": "^5.4.1",
+    "cli-progress": "^3.12.0",
+    "commander": "^14.0.0",
+    "diff": "^8.0.2",
     "dotenv": "^16.5.0",
+    "figlet": "^1.8.1",
+    "inquirer": "^12.6.3",
+    "ora": "^8.2.0",
     "zod": "^3.22.4"
   },
   "module": "index.ts"

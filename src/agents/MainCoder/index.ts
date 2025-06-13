@@ -8,12 +8,16 @@ import {
   createDirectorySchema, 
   executeCodeSchema,
   runCommandSchema,
+  diffFilesSchema,
+  gitDiffSchema,
   readFileTool,
   writeFileTool,
   listDirectoryTool,
   createDirectoryTool,
   executeCodeTool,
-  runCommandTool
+  runCommandTool,
+  diffFilesTool,
+  gitDiffTool
 } from './tools';
 
 interface ConversationMessage {
@@ -34,6 +38,8 @@ Key capabilities:
 - Read and write files in any codebase
 - Execute code safely in sandboxed environments (Python, JavaScript, TypeScript)
 - Run shell commands safely (git, npm, build tools, Unix commands)
+- Show beautiful diffs with delta integration for file comparisons
+- Display git diffs with syntax highlighting and formatting
 - Analyze code structure and suggest improvements
 - Help with debugging and testing
 - Work with Python, JavaScript, TypeScript, and Go codebases
@@ -71,7 +77,13 @@ When using shell commands:
 - Run build scripts, tests, and package managers (npm, yarn, bun)
 - Common Unix commands are available for file operations
 - Commands are safety-checked and sandboxed
-- Check command output and explain any issues or results`;
+- Check command output and explain any issues or results
+
+When showing changes:
+- Use git_diff tool to show repository changes with beautiful formatting
+- Use diff_files tool to compare specific file versions
+- Delta integration provides syntax highlighting and better readability
+- Always show diffs when files are modified or when user asks about changes`;
 
 export default async function Agent(
 	req: AgentRequest,
@@ -137,6 +149,16 @@ export default async function Agent(
 				description: 'Execute shell commands safely. Supports git, npm, build tools, and common Unix commands.',
 				parameters: runCommandSchema,
 				execute: async (params) => await runCommandTool.execute(params, ctx)
+			}),
+			diff_files: tool({
+				description: 'Compare two files and show a beautiful diff. Use this to see changes between file versions.',
+				parameters: diffFilesSchema,
+				execute: async (params) => await diffFilesTool.execute(params, ctx)
+			}),
+			git_diff: tool({
+				description: 'Show git diff for changed files with beautiful formatting. Use this to see what has changed in the repository.',
+				parameters: gitDiffSchema,
+				execute: async (params) => await gitDiffTool.execute(params, ctx)
 			})
 		};
 

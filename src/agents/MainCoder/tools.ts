@@ -3,6 +3,7 @@ import { readFile, writeFile, readdir, mkdir, stat } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
+import { diffLines, diffWords } from 'diff';
 import Riza from '@riza-io/api';
 import type { AgentContext } from '@agentuity/sdk';
 
@@ -50,6 +51,21 @@ export const runCommandSchema = z.object({
 	command: z.string().describe('The shell command to execute'),
 	workingDir: z.string().optional().describe('The working directory to run the command in (default: current directory)'),
 	timeout: z.number().optional().describe('Timeout in milliseconds (default: 30000)'),
+});
+
+// Diff Tools
+export const diffFilesSchema = z.object({
+	file1: z.string().describe('Path to the first file (or "original" content)'),
+	file2: z.string().describe('Path to the second file (or "modified" content)'),
+	useDelta: z.boolean().optional().describe('Whether to use delta for enhanced diff display (default: true)'),
+	context: z.number().optional().describe('Number of context lines to show (default: 3)'),
+});
+
+export const gitDiffSchema = z.object({
+	files: z.array(z.string()).optional().describe('Specific files to diff (default: all changed files)'),
+	staged: z.boolean().optional().describe('Show staged changes (default: false)'),
+	useDelta: z.boolean().optional().describe('Whether to use delta for enhanced diff display (default: true)'),
+	saveToFile: z.string().optional().describe('Save full diff to this file instead of displaying (useful for large diffs)'),
 });
 
 export const readFileTool: Tool = {
@@ -267,6 +283,283 @@ export const runCommandTool: Tool = {
 	}
 };
 
+// Diff helper functions
+function formatBuiltinDiff(diff: Array<{added?: boolean; removed?: boolean; value: string}>, file1Name: string, file2Name: string): string {
+	let result = `--- ${file1Name}\n+++ ${file2Name}\n`;
+	
+	for (const part of diff) {
+		const lines = part.value.split('\n');
+		for (const line of lines) {
+			if (line === '' && lines.indexOf(line) === lines.length - 1) continue; // Skip final empty line
+			
+			if (part.added) {
+				result += `+${line}\n`;
+			} else if (part.removed) {
+				result += `-${line}\n`;
+			} else {
+				result += ` ${line}\n`;
+			}
+		}
+	}
+	
+	return result;
+}
+
+async function checkDeltaAvailable(): Promise<boolean> {
+	try {
+		await execAsync('which delta');
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+export const diffFilesTool: Tool = {
+	name: 'diff_files',
+	description: 'Compare two files and show a beautiful diff. Use this to see changes between file versions.',
+	parameters: diffFilesSchema,
+	execute: async (params, ctx) => {
+		try {
+			const { file1, file2, useDelta = true, context = 3 } = params as {
+				file1: string;
+				file2: string;
+				useDelta?: boolean;
+				context?: number;
+			};
+
+			// Read file contents
+			let content1: string;
+			let content2: string;
+			let file1Name = file1;
+			let file2Name = file2;
+
+			try {
+				content1 = await readFile(file1, 'utf-8');
+			} catch {
+				// If file1 doesn't exist, treat it as content
+				content1 = file1;
+				file1Name = 'original';
+			}
+
+			try {
+				content2 = await readFile(file2, 'utf-8');
+			} catch {
+				// If file2 doesn't exist, treat it as content
+				content2 = file2;
+				file2Name = 'modified';
+			}
+
+			ctx.logger.info(`Generating diff between ${file1Name} and ${file2Name}`);
+
+			// Check if contents are the same
+			if (content1 === content2) {
+				return `✅ Files are identical: ${file1Name} and ${file2Name}`;
+			}
+
+			// Try delta first if requested and available
+			if (useDelta && await checkDeltaAvailable()) {
+				try {
+					// Create temporary files for delta
+					const tempDir = '/tmp';
+					const temp1 = join(tempDir, `diff_${Date.now()}_1.tmp`);
+					const temp2 = join(tempDir, `diff_${Date.now()}_2.tmp`);
+
+					await writeFile(temp1, content1);
+					await writeFile(temp2, content2);
+
+					const result = await execAsync(`delta --file-style omit --hunk-header-style omit "${temp1}" "${temp2}"`, {
+						maxBuffer: 1024 * 1024 * 5 // 5MB buffer
+					});
+
+					// Cleanup temp files
+					try {
+						await execAsync(`rm "${temp1}" "${temp2}"`);
+					} catch {
+						// Ignore cleanup errors
+					}
+
+					return `🎨 Diff (via delta):\n\`\`\`diff\n${result.stdout}\n\`\`\``;
+				} catch (deltaError) {
+					ctx.logger.warn('Delta failed, falling back to built-in diff:', deltaError);
+				}
+			}
+
+			// Fallback to built-in diff
+			const diff = diffLines(content1, content2);
+			const diffOutput = formatBuiltinDiff(diff, file1Name, file2Name);
+
+			return `📄 Diff:\n\`\`\`diff\n${diffOutput}\n\`\`\``;
+
+		} catch (error) {
+			ctx.logger.error('Error generating diff:', error);
+			return `❌ Error generating diff: ${error instanceof Error ? error.message : 'Unknown error'}`;
+		}
+	}
+};
+
+// Helper function to get diff statistics
+async function getDiffStats(): Promise<string> {
+	try {
+		const result = await execAsync('git diff --stat');
+		return result.stdout.trim();
+	} catch {
+		return '';
+	}
+}
+
+// Helper function to intelligently truncate diff
+function truncateDiff(diffOutput: string, maxLines: number = 100): { truncated: string; wasTruncated: boolean; totalLines: number } {
+	const lines = diffOutput.split('\n');
+	const totalLines = lines.length;
+	
+	if (lines.length <= maxLines) {
+		return { truncated: diffOutput, wasTruncated: false, totalLines };
+	}
+	
+	// Keep first 70% of lines for context, last 10% for recent changes
+	const keepStart = Math.floor(maxLines * 0.7);
+	const keepEnd = Math.floor(maxLines * 0.1);
+	
+	const truncated = [
+		...lines.slice(0, keepStart),
+		`\n... [${lines.length - keepStart - keepEnd} lines truncated] ...\n`,
+		...lines.slice(-keepEnd)
+	].join('\n');
+	
+	return { truncated, wasTruncated: true, totalLines };
+}
+
+export const gitDiffTool: Tool = {
+	name: 'git_diff',
+	description: 'Show git diff for changed files with intelligent handling of large diffs. Use this to see what has changed in the repository.',
+	parameters: gitDiffSchema,
+	execute: async (params, ctx) => {
+		try {
+			const { files = [], staged = false, useDelta = true, saveToFile } = params as {
+				files?: string[];
+				staged?: boolean;
+				useDelta?: boolean;
+				saveToFile?: string;
+			};
+
+			let command = 'git diff';
+			if (staged) command += ' --cached';
+			if (files.length > 0) command += ` -- ${files.join(' ')}`;
+
+			ctx.logger.info(`Running: ${command}`);
+
+			// First, get diff statistics
+			const stats = await getDiffStats();
+			
+			// If saveToFile is specified, save full diff to file
+			if (saveToFile) {
+				try {
+					const result = await execAsync(command);
+					if (!result.stdout.trim()) {
+						return staged 
+							? '✅ No staged changes to save'
+							: '✅ No changes to save (working directory is clean)';
+					}
+					
+					await writeFile(saveToFile, result.stdout);
+					return `💾 **Full diff saved to file:** \`${saveToFile}\`\n\n📊 **Statistics:**\n\`\`\`\n${stats}\n\`\`\`\n\n🔍 **View with:** \`less ${saveToFile}\` or open in your editor`;
+				} catch (error) {
+					ctx.logger.error('Error saving diff to file:', error);
+					return `❌ Error saving diff to file: ${error instanceof Error ? error.message : 'Unknown error'}`;
+				}
+			}
+			
+			// Try with delta first if available
+			if (useDelta && await checkDeltaAvailable()) {
+				try {
+					const result = await execAsync(`${command} | delta --features decorations --file-style omit`, {
+						maxBuffer: 1024 * 1024 * 5 // 5MB buffer
+					});
+
+					if (!result.stdout.trim()) {
+						return staged 
+							? '✅ No staged changes to show'
+							: '✅ No changes to show (working directory is clean)';
+					}
+
+					// Handle large diffs intelligently
+					const { truncated, wasTruncated, totalLines } = truncateDiff(result.stdout, 100);
+					
+					let output = `📊 **Diff Statistics:**\n\`\`\`\n${stats}\n\`\`\`\n\n`;
+					output += `🎨 **Git Diff** (via delta)`;
+					
+					if (wasTruncated) {
+						output += ` - Showing key changes (${totalLines} total lines):\n\n`;
+						output += `> 💡 **Large diff detected!** Use \`git diff > changes.patch\` to save full diff to file\n`;
+						output += `> 📁 Or ask to see specific files: "Show diff for src/main.py"\n\n`;
+					} else {
+						output += `:\n\n`;
+					}
+					
+					output += `\`\`\`diff\n${truncated}\n\`\`\``;
+					
+					if (wasTruncated) {
+						output += `\n\n🔍 **To see more:**\n`;
+						output += `• Ask for specific files: "Show changes in [filename]"\n`;
+						output += `• Use: \`git diff --name-only\` to list changed files\n`;
+						output += `• Save full diff: \`git diff > full_changes.patch\``;
+					}
+					
+					return output;
+				} catch (deltaError) {
+					ctx.logger.warn('Delta failed, falling back to regular git diff:', deltaError);
+				}
+			}
+
+			// Fallback to regular git diff with same intelligent handling
+			const result = await execAsync(command, {
+				maxBuffer: 1024 * 1024 * 5 // 5MB buffer
+			});
+
+			if (!result.stdout.trim()) {
+				return staged 
+					? '✅ No staged changes to show'
+					: '✅ No changes to show (working directory is clean)';
+			}
+
+			const { truncated, wasTruncated, totalLines } = truncateDiff(result.stdout, 100);
+			
+			let output = `📊 **Diff Statistics:**\n\`\`\`\n${stats}\n\`\`\`\n\n`;
+			output += `📄 **Git Diff**`;
+			
+			if (wasTruncated) {
+				output += ` - Showing key changes (${totalLines} total lines):\n\n`;
+				output += `> 💡 **Large diff detected!** Use \`git diff > changes.patch\` to save full diff to file\n\n`;
+			} else {
+				output += `:\n\n`;
+			}
+			
+			output += `\`\`\`diff\n${truncated}\n\`\`\``;
+			
+			if (wasTruncated) {
+				output += `\n\n🔍 **To see more:**\n`;
+				output += `• Ask for specific files: "Show changes in [filename]"\n`;
+				output += `• Use: \`git diff --name-only\` to list changed files\n`;
+				output += `• Save full diff: \`git diff > full_changes.patch\``;
+			}
+			
+			return output;
+
+		} catch (error) {
+			ctx.logger.error('Error running git diff:', error);
+			
+			if (error instanceof Error && 'code' in error) {
+				const execError = error as { code: number; stderr?: string };
+				if (execError.code === 128) {
+					return '❌ Not a git repository or git not available';
+				}
+			}
+			
+			return `❌ Error running git diff: ${error instanceof Error ? error.message : 'Unknown error'}`;
+		}
+	}
+};
+
 export const allTools: Tool[] = [
 	readFileTool,
 	writeFileTool,
@@ -274,4 +567,6 @@ export const allTools: Tool[] = [
 	createDirectoryTool,
 	executeCodeTool,
 	runCommandTool,
+	diffFilesTool,
+	gitDiffTool,
 ];
