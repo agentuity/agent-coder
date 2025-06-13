@@ -9,6 +9,7 @@ import boxen from 'boxen';
 import dotenv from 'dotenv';
 import { readFile, writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
+import { ContinuationHandler } from './cli/continuation-handler.js';
 
 // Load environment variables
 dotenv.config();
@@ -31,6 +32,9 @@ if (!API_KEY) {
 
 // Session management
 let sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+// Continuation handler for tool calls
+const continuationHandler = new ContinuationHandler();
 
 // Available slash commands
 const slashCommands = [
@@ -96,7 +100,7 @@ function showHeader() {
   console.log(chalk.dim('  Powered by Agentuity & Claude 4 Sonnet\n'));
 }
 
-// Send message to agent with beautiful streaming
+// Send message to agent with beautiful streaming and tool call handling
 async function sendMessage(message, showSpinner = true) {
   let spinner;
 
@@ -127,6 +131,8 @@ async function sendMessage(message, showSpinner = true) {
     console.log(chalk.green('\n🤖 Agent:'));
     console.log(chalk.dim('─'.repeat(60)));
 
+    // Collect the full response to check for tool calls
+    let fullResponse = '';
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
 
@@ -135,10 +141,11 @@ async function sendMessage(message, showSpinner = true) {
       if (done) break;
 
       const chunk = decoder.decode(value, { stream: true });
+      fullResponse += chunk;
 
       // Add enhanced formatting for diff content and tool calls
       const formattedChunk = chunk
-        .replace(/🔧 Using tool:/g, chalk.blue('🔧 Using tool:'))
+        .replace(/🔧 Requesting tool execution:/g, chalk.blue('🔧 Requesting tool execution:'))
         .replace(/📋 Parameters:/g, chalk.cyan('📋 Parameters:'))
         .replace(/✅ Tool completed/g, chalk.green('✅ Tool completed'))
         .replace(
@@ -153,6 +160,38 @@ async function sendMessage(message, showSpinner = true) {
         .replace(/📄 \*\*Git Diff\*\*/g, chalk.blue('📄 **Git Diff**'));
 
       process.stdout.write(formattedChunk);
+    }
+
+    // Check if response contains tool calls
+    const toolCallResult = await continuationHandler.handleToolCallFlow(
+      fullResponse,
+      AGENT_URL,
+      API_KEY,
+      sessionId,
+      message
+    );
+
+    if (toolCallResult.needsContinuation && toolCallResult.continuationResponse) {
+      // Stream the continuation response
+      console.log(chalk.green('\n🤖 Agent (continued):'));
+      console.log(chalk.dim('─'.repeat(60)));
+
+      const contReader = toolCallResult.continuationResponse.body.getReader();
+      
+      while (true) {
+        const { done, value } = await contReader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        
+        // Format continuation response
+        const formattedChunk = chunk
+          .replace(/📨 Received tool results:/g, chalk.green('📨 Received tool results:'))
+          .replace(/✅ (.*?): Success/g, chalk.green('✅ $1: Success'))
+          .replace(/❌ (.*?): Error/g, chalk.red('❌ $1: Error'));
+
+        process.stdout.write(formattedChunk);
+      }
     }
 
     // biome-ignore lint/style/useTemplate: <explanation>

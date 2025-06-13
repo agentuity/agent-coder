@@ -9,10 +9,14 @@ import type { AgentContext } from '@agentuity/sdk';
 
 const execAsync = promisify(exec);
 
-// Riza client for code execution
-const riza = new Riza({
-	apiKey: process.env.RIZA_API_KEY || 'riza_01JXMK7QHNYYJWN38R66270DSR_01JXMK83XX761VMCMP7E0FKHJ0'
-});
+// Riza client for code execution - requires RIZA_API_KEY environment variable
+function createRizaClient() {
+	const apiKey = process.env.RIZA_API_KEY;
+	if (!apiKey) {
+		throw new Error('RIZA_API_KEY environment variable is required for code execution');
+	}
+	return new Riza({ apiKey });
+}
 
 export interface Tool {
 	name: string;
@@ -174,6 +178,7 @@ export const executeCodeTool: Tool = {
 				...(input && { input: input })
 			};
 
+			const riza = createRizaClient();
 			const result = await riza.command.exec(execParams);
 
 			const output = [
@@ -183,9 +188,12 @@ export const executeCodeTool: Tool = {
 			].filter(Boolean).join('\n\n');
 
 			return output;
-		} catch (error) {
-			ctx.logger.error('Error executing code:', error);
-			return `Error executing code: ${error instanceof Error ? error.message : 'Unknown error'}`;
+		} catch (rizaError) {
+			if (rizaError instanceof Error && rizaError.message.includes('RIZA_API_KEY')) {
+				return `❌ Code execution unavailable: RIZA_API_KEY environment variable not set.\n\nTo enable code execution:\n1. Sign up at https://riza.io\n2. Get your API key\n3. Set RIZA_API_KEY environment variable`;
+			}
+			ctx.logger.error('Error executing code:', rizaError);
+			return `Error executing code: ${rizaError instanceof Error ? rizaError.message : 'Unknown error'}`;
 		}
 	}
 };

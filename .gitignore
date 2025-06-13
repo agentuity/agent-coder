@@ -37,3 +37,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .agentuity-crash-*.json
 .env.development
 .env.production
+/coder
+/agentuity-coder.config.json
+/.env.coder

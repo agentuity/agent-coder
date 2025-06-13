@@ -10,6 +10,7 @@
     "lint": "biome lint .",
     "prestart": "agentuity bundle",
     "start": "bun run .agentuity/index.js",
+    "setup": "bun run cli/setup-command.ts",
     "cli": "bun run cli.js",
     "coder": "bun run cli.js"
   },
@@ -26,7 +27,9 @@
   "private": true,
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
-    "@types/bun": "^1.2.16"
+    "@types/bun": "^1.2.16",
+    "@types/figlet": "^1.7.0",
+    "@types/inquirer": "^9.0.8"
   },
   "peerDependencies": {
     "typescript": "^5"

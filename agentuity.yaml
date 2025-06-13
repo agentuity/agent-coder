@@ -73,3 +73,7 @@ agents:
     id: agent_ae7cbe64f1c31943895f65422617cbf8
     # The name of the Agent which is editable
     name: MainCoder
+  - # Cloud agent for hybrid architecture
+    id: agent_bf7dce65e2c42854896e75533728dbf9
+    # The name of the Agent which is editable
+    name: CloudCoder
