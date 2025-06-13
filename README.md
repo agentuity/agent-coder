@@ -321,10 +321,6 @@ bun run cli "message"
 ```bash
 # Use specific session
 bun run cli --session my-project-auth "continue previous work"
-
-# Multiple projects
-bun run cli --project ./frontend --interactive
-bun run cli --project ./backend --interactive
 ```
 
 ### Integration Examples
@@ -345,4 +341,3 @@ const response = await fetch('http://127.0.0.1:3500/agent_xxx', {
 
 **Built with ❤️ using [Agentuity](https://agentuity.dev) and [Riza.io](https://riza.io)**
 
-Ready to code with AI? Run `bun run cli --interactive` and start building! 🚀
