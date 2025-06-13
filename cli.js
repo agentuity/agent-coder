@@ -21,15 +21,17 @@ async function getAgentUrl(mode = 'auto') {
     return process.env.AGENT_URL;
   }
 
-  // Try to read from config file first
-  try {
-    const configContent = await readFile('agentuity-coder.config.json', 'utf-8');
-    const config = JSON.parse(configContent);
-    if (config.agentUrl && (mode === 'cloud' || config.mode === 'cloud')) {
-      return config.agentUrl;
+  // Try to read from config file only for cloud mode (not auto mode)
+  if (mode === 'cloud') {
+    try {
+      const configContent = await readFile('agentuity-coder.config.json', 'utf-8');
+      const config = JSON.parse(configContent);
+      if (config.agentUrl) {
+        return config.agentUrl;
+      }
+    } catch (error) {
+      // Config file doesn't exist or invalid, continue to dynamic detection
     }
-  } catch (error) {
-    // Config file doesn't exist or invalid, continue to dynamic detection
   }
 
   // Use dynamic config detection to work for any developer
