@@ -157,6 +157,10 @@ export class ContinuationHandler {
     console.log(chalk.blue('📨 Sending tool results back to agent...\n'));
     
     try {
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
       const response = await fetch(agentUrl, {
         method: 'POST',
         headers: {
@@ -165,17 +169,32 @@ export class ContinuationHandler {
           'x-session-id': continuationRequest.sessionId,
         },
         body: JSON.stringify(continuationRequest),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         console.error(chalk.red(`HTTP Error: ${response.status} ${response.statusText}`));
         const errorText = await response.text().catch(() => 'Could not read error response');
         console.error(chalk.red(`Response body: ${errorText}`));
+        
+        // Handle rate limit errors more gracefully
+        if (response.status === 429) {
+          console.error(chalk.yellow('⚠️  Rate limit exceeded. Please wait a moment before trying again.'));
+          console.error(chalk.yellow('💡 Try making smaller requests or wait for rate limits to reset.'));
+        }
+        
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       return response;
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.error(chalk.red('❌ Request timed out after 30 seconds'));
+        throw new Error('Request timed out');
+      }
+      
       console.error(chalk.red('Fetch error details:'), error);
       console.error(chalk.red(`URL: ${agentUrl}`));
       console.error(chalk.red(`Headers: ${JSON.stringify({

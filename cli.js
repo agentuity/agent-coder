@@ -46,10 +46,6 @@ function processResponseText(text) {
   return text;
 }
 
-// Track state for filtering parameter blocks
-let insideParameterBlock = false;
-let parameterBraceCount = 0;
-
 // Process individual lines during streaming for better formatting
 function processStreamingLine(line) {
   // Filter out technical noise first
@@ -61,26 +57,20 @@ function processStreamingLine(line) {
     // Remove "Tool execution completed" messages since we show our own
     .replace(/Tool execution completed\. Based on the results.*?\n?/g, '');
 
-  // Handle parameter block filtering with state tracking
-  if (processedLine.includes('📋 Parameters:')) {
-    insideParameterBlock = true;
-    parameterBraceCount = 0;
-    // Count opening braces in this line
-    parameterBraceCount += (processedLine.match(/\{/g) || []).length;
-    parameterBraceCount -= (processedLine.match(/\}/g) || []).length;
-    return ''; // Filter out the entire parameters line
+  // Simple parameter line filtering - only filter obvious parameter lines
+  // This is more conservative to avoid hiding legitimate content
+  if (/^📋 Parameters:\s*\{/.test(processedLine.trim())) {
+    return ''; // Filter out parameter start lines
   }
   
-  if (insideParameterBlock) {
-    // Count braces to know when parameter block ends
-    parameterBraceCount += (processedLine.match(/\{/g) || []).length;
-    parameterBraceCount -= (processedLine.match(/\}/g) || []).length;
-    
-    if (parameterBraceCount <= 0) {
-      insideParameterBlock = false;
-      parameterBraceCount = 0;
-    }
-    return ''; // Filter out lines inside parameter block
+  // Filter out lines that look like JSON parameter content (conservative approach)
+  if (/^\s*["'][a-zA-Z_]+["']:\s*["\{]/.test(processedLine.trim())) {
+    return ''; // Filter out obvious JSON parameter lines
+  }
+  
+  // Filter out closing parameter braces
+  if (/^\s*\}\s*$/.test(processedLine.trim())) {
+    return ''; // Filter out standalone closing braces
   }
 
   // If line was filtered out completely, return empty
@@ -274,6 +264,11 @@ async function sendMessage(message, showSpinner = true, agentMode = 'auto') {
 
   try {
     const targetUrl = await getAgentUrl(agentMode);
+    
+    // Add timeout to prevent hanging
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout for initial request
+    
     const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
@@ -282,10 +277,18 @@ async function sendMessage(message, showSpinner = true, agentMode = 'auto') {
         'x-session-id': sessionId,
       },
       body: message,
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      const errorText = await response.text().catch(() => 'Could not read error response');
+      if (response.status === 429) {
+        console.error(chalk.yellow('⚠️  Rate limit exceeded. Please wait before trying again.'));
+        console.error(chalk.yellow('💡 Try shorter requests or wait for rate limits to reset.'));
+      }
+      throw new Error(`HTTP ${response.status}: ${response.statusText}\n${errorText}`);
     }
 
     if (spinner) spinner.stop();
@@ -380,7 +383,15 @@ async function sendMessage(message, showSpinner = true, agentMode = 'auto') {
     console.log('\n' + chalk.dim('─'.repeat(60)));
   } catch (error) {
     if (spinner) spinner.fail(chalk.red('Failed to communicate with agent'));
-    console.error(chalk.red(`❌ Error: ${error.message}`));
+    
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error(chalk.red('❌ Request timed out. The agent may be overloaded.'));
+      console.error(chalk.yellow('💡 Try again with a shorter request or wait a moment.'));
+    } else if (error instanceof Error) {
+      console.error(chalk.red(`❌ Error: ${error.message}`));
+    } else {
+      console.error(chalk.red(`❌ Error: ${String(error)}`));
+    }
   }
 }
 
