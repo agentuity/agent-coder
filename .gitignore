@@ -40,3 +40,14 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 /coder
 /agentuity-coder.config.json
 /.env.coder
+
+# Development artifacts
+test-*.js
+*_demo.md
+*_notes.md
+.vscode/settings.json
+
+# Temporary files
+*.tmp
+*.temp
+changes_*.patch

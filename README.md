@@ -1,227 +1,344 @@
-# Coding Agent
+# 🤖 Coding Agent
 
-A powerful AI coding agent built with Agentuity that can read, write, analyze, and execute code across multiple languages. This agent provides autonomous coding assistance with secure code execution via Riza.io.
+A powerful AI coding assistant built with Agentuity that provides autonomous coding help with real-time tool execution. Features a hybrid cloud-local architecture where the AI runs in the cloud but all tool execution happens securely on your local machine.
 
-## Features
+## ✨ Features
 
 ### 🔧 Core Capabilities
 - **File Operations**: Read, write, list directories, create directories
-- **Code Execution**: Safe execution of Python, JavaScript, and TypeScript in sandboxed environments
-- **Multi-Language Support**: Works with Python, JavaScript, TypeScript, and Go codebases
-- **Conversation Memory**: Maintains context across interactions using Agentuity KV store
-- **Streaming Responses**: Real-time response streaming for better user experience
+- **Code Execution**: Safe execution of Python, JavaScript, and TypeScript via Riza.io
+- **Shell Commands**: Git operations, npm/bun commands, build tools (safety-checked)
+- **Diff Visualization**: Beautiful file comparisons with delta integration
+- **Work Context**: Remember goals and progress across sessions
+- **Multi-Language Support**: Python, JavaScript, TypeScript, Go codebases
 
-### 🛠 Available Tools
-
-1. **`read_file`** - Read and examine existing code files
-2. **`write_file`** - Create new files or modify existing ones
-3. **`list_directory`** - Explore project structure and organization
-4. **`create_directory`** - Create directories for proper code organization
-5. **`execute_code`** - Run and test code safely in isolated environments
-
-## Architecture
-
+### 🏗️ Hybrid Architecture
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Local Client  │───▶│  Agentuity      │───▶│     Tools       │
-│   (CLI/VSCode)  │    │  Cloud Agent    │    │                 │
-└─────────────────┘    └─────────────────┘    │  • File Ops     │
-                                             │  • Code Exec    │
-                                             │  • Git Ops      │
-                                             └─────────────────┘
-                                                      │
-                                             ┌─────────────────┐
-                                             │   Riza.io API   │
-                                             │ (Code Execution)│
-                                             └─────────────────┘
+│   Cloud Agent   │◄──►│   Local CLI     │◄──►│  Local Tools    │
+│  (Claude LLM)   │    │ (Tool Proxy)    │    │ (File System)   │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-## Quick Start
+**Benefits:**
+- 🌐 **AI in the cloud** - Access to latest Claude models and Agentuity infrastructure
+- 🔒 **Tools run locally** - Your files and commands never leave your machine
+- 🚀 **Works anywhere** - Same experience locally and deployed to cloud
+- 🔄 **Real-time streaming** - See AI thinking and tool execution live
 
-### 1. Start the Agent
+## 🚀 Quick Start
+
+### 1. Setup
 ```bash
-# Development mode (local)
+# Clone and install
+git clone <your-repo>
+cd CodingAgent
+bun install
+
+# Start local development server
+bun run dev
+```
+
+### 2. Use the CLI
+```bash
+# Interactive mode (recommended)
+bun run cli --interactive
+
+# Direct commands
+bun run cli "What files are in this project?"
+bun run cli "Create a FastAPI server with authentication"
+
+# Local vs Cloud modes
+bun run cli --local "analyze this codebase"
+bun run cli --cloud "help with debugging"  # (when cloud configured)
+```
+
+### 3. Example Session
+```bash
+$ bun run cli --interactive
+
+   ___          _  _                 _                    _
+  / __| ___  __| |(_) _ _   __ _    /_\   __ _  ___  _ _ | |_
+ | (__ / _ \/ _` || || ' \ / _` |  / _ \ / _` |/ -_)| ' \|  _|
+  \___|\___/\__,_||_||_||_|\__, | /_/ \_\\__, |\___||_||_|\__|
+                           |___/         |___/
+
+💬 You: What does this project do?
+
+🤖 Agent: I'll analyze the project structure to understand what it does.
+🔧 Using tool: list_directory
+
+[Tool executes locally, returns results]
+
+This is a Coding Agent built with Agentuity that provides AI-powered 
+coding assistance. It features a hybrid architecture where...
+```
+
+## 🎨 CLI Features
+
+### 🔧 Interactive Commands
+- `/help` - Show available commands and examples
+- `/clear` - Clear screen and show header  
+- `/session` - Start new conversation session
+- `/context` - Show current work context and goals
+- `/diff` - Show git diff with beautiful formatting
+- `/quit` - Exit gracefully
+
+### 🎯 Smart Features
+- **Project Detection** - Auto-detects git repos, package.json, pyproject.toml
+- **Session Persistence** - Maintains conversation context across interactions
+- **Beautiful Output** - Colored text, loading spinners, progress indicators
+- **Command History** - Remembers your previous interactions
+
+## 🛠️ Available Tools
+
+The agent has access to these tools that run on your local machine:
+
+| Tool | Description | Example Usage |
+|------|-------------|---------------|
+| **read_file** | Read and examine code files | "Show me the main.py file" |
+| **write_file** | Create or modify files | "Create a FastAPI server" |
+| **list_directory** | Explore project structure | "What files are in src/?" |
+| **create_directory** | Create new directories | "Organize code into modules" |
+| **execute_code** | Run code safely (Python/JS/TS) | "Test this function" |
+| **run_command** | Execute shell commands | "Run the tests", "git status" |
+| **diff_files** | Compare file versions | "Show changes in main.py" |
+| **git_diff** | Beautiful git diffs | "What changed since last commit?" |
+| **set_work_context** | Set current goals | "We're building user auth" |
+| **get_work_context** | Check current work | "What are we working on?" |
+
+## ⚙️ Configuration
+
+### Environment Variables
+```bash
+# Required
+API_KEY=your_agentuity_api_key
+
+# Optional (for code execution)
+RIZA_API_KEY=your_riza_api_key
+
+# Optional (override agent URL)
+AGENT_URL=https://your-custom-agent.agentuity.cloud/agent_xxx
+```
+
+### Agent URLs (Auto-detected)
+The CLI automatically detects your agent URLs using `agentuity agent list --format json`. This means the system works out-of-the-box for any developer who clones the repo.
+
+**Local Development:**
+- Runs agent on `http://127.0.0.1:3500/agent_xxx`
+- All tools execute on your local machine
+
+**Cloud Deployment:**
+- Agent runs on `https://your-deployment.agentuity.cloud/agent_xxx`
+- Tools still execute locally via CLI
+
+## 🔧 Development
+
+### Project Structure
+```
+CodingAgent/
+├── src/agents/CloudCoder/     # Main agent (works local + cloud)
+├── cli/                       # CLI client and tool proxy
+│   ├── continuation-handler.ts
+│   ├── tool-proxy.ts
+│   └── config-utils.ts
+├── tools/                     # Shared tool definitions
+├── scripts/                   # Utility scripts
+├── cli.js                     # Main CLI entry point
+└── agentuity.yaml            # Agent configuration
+```
+
+### Development Commands
+```bash
+# Start development server
 bun run dev
 
-# Production deployment
-agentuity deploy
+# Use CLI locally
+bun run cli --local --interactive
+
+# Test dynamic configuration
+bun run test-config
+
+# Show detected agent URLs
+bun run show-urls
+
+# Format and lint
+bun run format
+bun run lint
 ```
 
-### 2. Test with CLI Client
+### Testing
 ```bash
-# Make executable and run
-chmod +x test-client.js
-node test-client.js
+# Test local agent
+bun run cli --local "test message"
+
+# Test configuration detection
+bun run test-config
+
+# Test specific functionality
+bun run cli --local "run git status"
+bun run cli --local "list files and create a simple test"
 ```
 
-### 3. API Endpoints
-- **Local**: `http://127.0.0.1:3500/agent_ae7cbe64f1c31943895f65422617cbf8`
-- **Cloud**: Will be provided after deployment
+## 🚦 Usage Examples
 
-## Usage Examples
+### File Operations
+```bash
+💬 You: "What's in package.json and what dependencies do we have?"
+# Agent reads file and analyzes dependencies
 
-### Basic File Operations
-```
-You: Can you read the package.json file and tell me what dependencies we have?
+💬 You: "Create a simple Express server in server.js"
+# Agent writes file and explains the code
 
-Agent: I'll read the package.json file for you.
-[reads file and analyzes dependencies]
+💬 You: "Show me the project structure"  
+# Agent lists directories and key files
 ```
 
 ### Code Development
-```
-You: Create a simple Python function that calculates fibonacci numbers
-
-Agent: I'll create a fibonacci function for you.
-[writes fibonacci.py file]
-[tests the code using execute_code tool]
-```
-
-### Project Analysis
-```
-You: Help me understand the structure of this project
-
-Agent: I'll explore the project structure for you.
-[lists directories and key files]
-[provides architectural overview]
-```
-
-### Code Execution and Testing
-```
-You: Can you test this Python code: print("Hello, World!")
-
-Agent: I'll execute that Python code for you.
-[uses execute_code tool]
-[shows output: "Hello, World!"]
-```
-
-## Configuration
-
-### Environment Variables
-- `RIZA_API_KEY`: Your Riza.io API key for code execution
-- `AGENTUITY_API_KEY`: Automatically set by Agentuity platform
-
-### Authentication
-- Bearer token authentication required
-- Session-based conversation tracking
-- Secure KV storage for context
-
-## Local Integration Options
-
-### Option 1: CLI Tool (Current)
-- Simple command-line interface
-- Real-time conversation
-- File/directory operations
-- Easy testing and development
-
-### Option 2: VSCode Extension (Future)
-- Real-time code editing collaboration
-- Contextual file sending
-- Integrated terminal/output
-- Seamless workflow integration
-
-### Option 3: API Integration
-- Direct HTTP API calls
-- Custom client development
-- Integration with existing tools
-- Programmatic access
-
-## API Reference
-
-### Request Format
 ```bash
-curl -X POST http://127.0.0.1:3500/agent_ae7cbe64f1c31943895f65422617cbf8 \
-  -H "Content-Type: text/plain" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "x-session-id: unique-session-id" \
-  -d "Your coding request here"
+💬 You: "Create a Python function to calculate fibonacci numbers"
+# Agent writes fibonacci.py and tests it with execute_code
+
+💬 You: "Fix the bug in src/main.py line 42"
+# Agent reads file, identifies issue, makes fix, shows diff
+
+💬 You: "Run the tests and show me any failures"
+# Agent runs npm test and analyzes output
 ```
 
-### Response Format
-- Streaming text responses
-- Real-time tool execution updates
-- Error handling with clear messages
-- Context preservation across requests
+### Git & Project Management
+```bash
+💬 You: "What changed since my last commit?"
+# Agent runs git diff with beautiful formatting
 
-## Best Practices
+💬 You: "We're working on user authentication - set that as our context"
+# Agent remembers this goal for the session
 
-### For Users
-1. **Be Specific**: Provide clear requirements and context
-2. **Use Sessions**: Include session IDs for conversation continuity
-3. **Test Incrementally**: Work on small, testable pieces
-4. **Provide Context**: Share relevant file paths and project structure
-
-### For Development
-1. **Security**: All code execution happens in Riza.io sandbox
-2. **Error Handling**: Comprehensive error reporting and recovery
-3. **Performance**: Efficient file operations and caching
-4. **Scalability**: Designed for multiple concurrent users
-
-## File Structure
-
-```
-CodingAgent/
-├── src/
-│   └── agents/
-│       └── MainCoder/
-│           ├── index.ts       # Main agent logic
-│           └── tools.ts       # Tool definitions
-├── test-client.js            # CLI testing client
-├── package.json              # Dependencies
-├── agentuity.yaml           # Agentuity configuration
-└── README.md                # This documentation
+💬 You: "What are we currently working on?"
+# Agent shows current work context and progress
 ```
 
-## Troubleshooting
+## 🔒 Security
+
+- **Sandboxed Code Execution**: All code runs in Riza.io isolated environments
+- **Local Tool Execution**: Files and commands never leave your machine
+- **Command Safety**: Shell commands are whitelisted and checked
+- **No Hardcoded Secrets**: All API keys via environment variables
+- **Session Isolation**: Each conversation has its own secure context
+
+## 🎯 CLI Modes
+
+### Local Mode (Default)
+```bash
+bun run cli --local "message"
+```
+- Agent runs on `localhost:3500`
+- Great for development and testing
+- No internet required (except for AI model calls)
+
+### Cloud Mode
+```bash
+bun run cli --cloud "message"  
+```
+- Agent runs on Agentuity cloud
+- Perfect for team collaboration
+- Same local tool execution
+
+### Auto Mode
+```bash
+bun run cli "message"  # defaults to local
+```
+- Automatically chooses best available mode
+- Falls back gracefully if one mode unavailable
+
+## 🚀 Distribution
+
+This coding agent is designed to be easily shared and used by any developer:
+
+1. **Clone & Go**: Works immediately after `git clone` + `bun install`
+2. **Dynamic Configuration**: Auto-detects any developer's agent IDs
+3. **Zero Config**: No setup required for basic local usage
+4. **Portable**: Same experience on any machine
+
+### For Teams
+1. Deploy agent to Agentuity cloud
+2. Share cloud URL with team
+3. Everyone uses same `--cloud` mode
+4. All tool execution remains local for each developer
+
+## 🐛 Troubleshooting
 
 ### Common Issues
 
-**Agent not responding:**
-- Check if development server is running (`bun run dev`)
-- Verify correct endpoint URL and API key
-- Check network connectivity
+**"Failed to communicate with agent"**
+- Check if `bun run dev` is running for local mode
+- Verify `API_KEY` environment variable is set
+- Try `bun run test-config` to check configuration
 
-**Code execution fails:**
-- Verify Riza.io API key is set correctly
-- Check if language is supported (Python, JavaScript, TypeScript)
-- Review code syntax and dependencies
+**"Code execution failed"**
+- Set `RIZA_API_KEY` environment variable
+- Check code syntax and language support
+- Verify network access to Riza.io
 
-**File operations fail:**
-- Check file/directory permissions
-- Verify paths are relative to working directory
-- Ensure parent directories exist for write operations
+**"Command not allowed"**
+- Shell commands are safety-checked
+- Use allowed commands: git, npm, bun, python, node, etc.
+- Check command whitelist in tool configuration
 
-### Debugging
+### Debug Commands
+```bash
+# Test configuration
+bun run test-config
 
-1. Check agent logs in development mode
-2. Use test client for isolated testing
-3. Verify tool execution in Agentuity console
-4. Monitor KV store for session persistence
+# Check agent URLs
+bun run show-urls
 
-## Contributing
+# Test with simple message
+bun run cli --local "hello"
+```
 
-To extend the agent:
+## 🤝 Contributing
 
-1. **Add New Tools**: Extend `tools.ts` with new tool definitions
-2. **Update Agent Logic**: Modify conversation handling in `index.ts`
-3. **Test Thoroughly**: Use test client and write unit tests
-4. **Document Changes**: Update this documentation
+1. **Fork & Clone**: Standard GitHub workflow
+2. **Local Development**: Use `bun run dev` + `bun run cli --local`
+3. **Add Tools**: Extend `tools/interface.ts` for new capabilities
+4. **Test**: Verify both local and cloud modes work
+5. **Document**: Update this README for new features
 
-## Security
+## 📚 Advanced Usage
 
-- All code execution happens in isolated Riza.io sandboxes
-- No direct system access from executed code
-- Bearer token authentication for all requests
-- Session-based isolation for multi-user scenarios
-- Secure KV storage for conversation context
+### Custom Agent URLs
+```bash
+export AGENT_URL="https://custom-agent.example.com/agent_xxx"
+bun run cli "message"
+```
 
-## Support
+### Session Management
+```bash
+# Use specific session
+bun run cli --session my-project-auth "continue previous work"
 
-- **Documentation**: https://agentuity.dev
-- **Issues**: Use project issue tracker
-- **Community**: Join Agentuity Discord
-- **API Reference**: https://docs.riza.io
+# Multiple projects
+bun run cli --project ./frontend --interactive
+bun run cli --project ./backend --interactive
+```
+
+### Integration Examples
+```javascript
+// Direct API usage
+const response = await fetch('http://127.0.0.1:3500/agent_xxx', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'text/plain',
+    'Authorization': `Bearer ${API_KEY}`,
+    'x-session-id': 'unique-session'
+  },
+  body: 'Your coding request here'
+});
+```
 
 ---
 
-Built with ❤️ using [Agentuity](https://agentuity.dev) and [Riza.io](https://riza.io)
+**Built with ❤️ using [Agentuity](https://agentuity.dev) and [Riza.io](https://riza.io)**
+
+Ready to code with AI? Run `bun run cli --interactive` and start building! 🚀

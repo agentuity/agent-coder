@@ -1,6 +1,7 @@
 {
   "name": "CodingAgent",
   "version": "0.0.1",
+  "description": "AI coding assistant with hybrid cloud-local architecture. Agent runs in cloud, tools execute locally.",
   "main": "index.js",
   "type": "module",
   "scripts": {
@@ -21,10 +22,11 @@
   },
   "keywords": [
     "agentuity",
-    "agent",
-    "ai",
-    "ai agent",
-    "bun"
+    "ai-agent",
+    "coding-assistant",
+    "claude",
+    "typescript",
+    "cli-tool"
   ],
   "private": true,
   "devDependencies": {
