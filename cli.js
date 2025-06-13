@@ -10,9 +10,135 @@ import dotenv from 'dotenv';
 import { readFile, writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ContinuationHandler } from './cli/continuation-handler.js';
+import { marked } from 'marked';
+import TerminalRenderer from 'marked-terminal';
 
 // Load environment variables
 dotenv.config();
+
+// Configure markdown rendering for terminal
+marked.setOptions({
+  renderer: new TerminalRenderer({
+    code: chalk.yellow,
+    blockquote: chalk.gray.italic,
+    heading: chalk.bold.blue,
+    link: chalk.cyan.underline,
+    strong: chalk.bold,
+    em: chalk.italic,
+    codespan: chalk.bgBlack.white,
+  })
+});
+
+// Enhanced text processing function
+function processResponseText(text) {
+  // Check if text contains markdown-like content
+  const hasMarkdown = /^#{1,6}\s|```|\*\*|\*[^*]|\[.*\]\(.*\)|^\s*[\*\-\+]\s/m.test(text);
+  
+  if (hasMarkdown) {
+    try {
+      return marked(text);
+    } catch (error) {
+      // Fallback to plain text if markdown parsing fails
+      return text;
+    }
+  }
+  
+  return text;
+}
+
+// Track state for filtering parameter blocks
+let insideParameterBlock = false;
+let parameterBraceCount = 0;
+
+// Process individual lines during streaming for better formatting
+function processStreamingLine(line) {
+  // Filter out technical noise first
+  let processedLine = line
+    // Remove tool IDs and technical messages from agent responses
+    .replace(/📨 Received tool results:\s*\n?/g, '')
+    .replace(/✅ toolu_[a-zA-Z0-9]+: Success\s*\n?/g, '')
+    .replace(/❌ toolu_[a-zA-Z0-9]+: Error\s*\n?/g, '')
+    // Remove "Tool execution completed" messages since we show our own
+    .replace(/Tool execution completed\. Based on the results.*?\n?/g, '');
+
+  // Handle parameter block filtering with state tracking
+  if (processedLine.includes('📋 Parameters:')) {
+    insideParameterBlock = true;
+    parameterBraceCount = 0;
+    // Count opening braces in this line
+    parameterBraceCount += (processedLine.match(/\{/g) || []).length;
+    parameterBraceCount -= (processedLine.match(/\}/g) || []).length;
+    return ''; // Filter out the entire parameters line
+  }
+  
+  if (insideParameterBlock) {
+    // Count braces to know when parameter block ends
+    parameterBraceCount += (processedLine.match(/\{/g) || []).length;
+    parameterBraceCount -= (processedLine.match(/\}/g) || []).length;
+    
+    if (parameterBraceCount <= 0) {
+      insideParameterBlock = false;
+      parameterBraceCount = 0;
+    }
+    return ''; // Filter out lines inside parameter block
+  }
+
+  // If line was filtered out completely, return empty
+  if (!processedLine.trim()) {
+    return '';
+  }
+
+  // Apply simple formatting instead of full markdown processing to avoid breaking numbered lists
+  // Only process headers with markdown, handle other formatting manually
+  if (/^#{1,6}\s/.test(processedLine)) {
+    try {
+      processedLine = marked(processedLine);
+    } catch (error) {
+      // Fallback to manual header formatting
+      processedLine = processedLine.replace(/^(#{1,6})\s+(.+)$/g, (match, hashes, text) => {
+        const level = hashes.length;
+        if (level === 1) return `${chalk.bold.blue(text)}\n`;
+        if (level === 2) return `${chalk.bold.cyan(text)}\n`;
+        if (level === 3) return `${chalk.bold.yellow(text)}\n`;
+        return `${chalk.bold(text)}\n`;
+      });
+    }
+  } else {
+    // Manual formatting for other elements to preserve list numbering
+    processedLine = processedLine
+      // Bold text
+      .replace(/\*\*(.*?)\*\*/g, chalk.bold('$1'))
+      .replace(/__(.*?)__/g, chalk.bold('$1'))
+      // Italic text  
+      .replace(/\*(.*?)\*/g, chalk.italic('$1'))
+      .replace(/_(.*?)_/g, chalk.italic('$1'))
+      // Inline code
+      .replace(/`(.*?)`/g, chalk.bgBlack.white(' $1 '))
+      // Links (basic formatting)
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, `${chalk.cyan.underline('$1')}${chalk.dim(' ($2)')}`);
+  }
+
+  // Apply enhanced formatting for tool execution messages
+  processedLine = processedLine
+    .replace(
+      /🔧 Requesting tool execution:/g,
+      chalk.blue('🔧 Requesting tool execution:')
+    )
+    .replace(/✅ Tool completed/g, chalk.green('✅ Tool completed'))
+    // Format diff and git messages
+    .replace(
+      /💡 \*\*Large diff detected!\*\*/g,
+      chalk.yellow('💡 **Large diff detected!**')
+    )
+    .replace(
+      /📊 \*\*Diff Statistics:\*\*/g,
+      chalk.cyan('📊 **Diff Statistics:**')
+    )
+    .replace(/🎨 \*\*Git Diff\*\*/g, chalk.magenta('🎨 **Git Diff**'))
+    .replace(/📄 \*\*Git Diff\*\*/g, chalk.blue('📄 **Git Diff**'));
+
+  return processedLine;
+}
 
 // Dynamic agent URL configuration - works for any developer's agent IDs
 async function getAgentUrl(mode = 'auto') {
@@ -169,6 +295,7 @@ async function sendMessage(message, showSpinner = true, agentMode = 'auto') {
 
     // Collect the full response to check for tool calls
     let fullResponse = '';
+    let lineBuffer = '';
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
 
@@ -178,27 +305,26 @@ async function sendMessage(message, showSpinner = true, agentMode = 'auto') {
 
       const chunk = decoder.decode(value, { stream: true });
       fullResponse += chunk;
+      lineBuffer += chunk;
 
-      // Add enhanced formatting for diff content and tool calls
-      const formattedChunk = chunk
-        .replace(
-          /🔧 Requesting tool execution:/g,
-          chalk.blue('🔧 Requesting tool execution:')
-        )
-        .replace(/📋 Parameters:/g, chalk.cyan('📋 Parameters:'))
-        .replace(/✅ Tool completed/g, chalk.green('✅ Tool completed'))
-        .replace(
-          /💡 \*\*Large diff detected!\*\*/g,
-          chalk.yellow('💡 **Large diff detected!**')
-        )
-        .replace(
-          /📊 \*\*Diff Statistics:\*\*/g,
-          chalk.cyan('📊 **Diff Statistics:**')
-        )
-        .replace(/🎨 \*\*Git Diff\*\*/g, chalk.magenta('🎨 **Git Diff**'))
-        .replace(/📄 \*\*Git Diff\*\*/g, chalk.blue('📄 **Git Diff**'));
+      // Process complete lines for better markdown rendering
+      const lines = lineBuffer.split('\n');
+      lineBuffer = lines.pop() || ''; // Keep incomplete line in buffer
 
-      process.stdout.write(formattedChunk);
+      for (const line of lines) {
+        const processedLine = processStreamingLine(`${line}\n`);
+        if (processedLine) {
+          process.stdout.write(processedLine);
+        }
+      }
+    }
+
+    // Process any remaining content in buffer
+    if (lineBuffer) {
+      const processedLine = processStreamingLine(lineBuffer);
+      if (processedLine) {
+        process.stdout.write(processedLine);
+      }
     }
 
     // Check if response contains tool calls
@@ -220,23 +346,33 @@ async function sendMessage(message, showSpinner = true, agentMode = 'auto') {
       console.log(chalk.dim('─'.repeat(60)));
 
       const contReader = toolCallResult.continuationResponse.body.getReader();
+      let contLineBuffer = '';
 
       while (true) {
         const { done, value } = await contReader.read();
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
+        contLineBuffer += chunk;
 
-        // Format continuation response
-        const formattedChunk = chunk
-          .replace(
-            /📨 Received tool results:/g,
-            chalk.green('📨 Received tool results:')
-          )
-          .replace(/✅ (.*?): Success/g, chalk.green('✅ $1: Success'))
-          .replace(/❌ (.*?): Error/g, chalk.red('❌ $1: Error'));
+        // Process complete lines for continuation response
+        const lines = contLineBuffer.split('\n');
+        contLineBuffer = lines.pop() || '';
 
-        process.stdout.write(formattedChunk);
+        for (const line of lines) {
+          const processedLine = processStreamingLine(`${line}\n`);
+          if (processedLine) {
+            process.stdout.write(processedLine);
+          }
+        }
+      }
+
+      // Process any remaining content in continuation buffer
+      if (contLineBuffer) {
+        const processedLine = processStreamingLine(contLineBuffer);
+        if (processedLine) {
+          process.stdout.write(processedLine);
+        }
       }
     }
 

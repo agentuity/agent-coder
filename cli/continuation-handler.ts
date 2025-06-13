@@ -50,18 +50,28 @@ export class ContinuationHandler {
       const toolCall = toolCalls[i];
       if (!toolCall) continue;
       
+      // Clean, concise tool execution display
       console.log(chalk.cyan(`[${i + 1}/${toolCalls.length}] Executing: ${toolCall.toolName}`));
-      console.log(chalk.dim(`Parameters: ${JSON.stringify(toolCall.parameters, null, 2)}`));
+      
+      // Only show key parameters, not the full JSON dump
+      if (toolCall.parameters) {
+        const keyParams = this.getKeyParameters(toolCall.toolName, toolCall.parameters);
+        if (keyParams) {
+          console.log(chalk.dim(`${keyParams}`));
+        }
+      }
       
       const result = await this.toolProxy.executeToolCall(toolCall);
       results.push(result);
       
       if (result.success) {
-        console.log(chalk.green(`✅ ${toolCall.toolName} completed successfully`));
-        // Show first few lines of result for feedback
-        if (result.result) {
-          const preview = result.result.split('\n').slice(0, 3).join('\n');
-          console.log(chalk.dim(`Preview: ${preview}${result.result.split('\n').length > 3 ? '...' : ''}`));
+        console.log(chalk.green(`✅ ${toolCall.toolName} completed`));
+        // Show brief result preview for certain tools
+        if (result.result && this.shouldShowPreview(toolCall.toolName)) {
+          const preview = this.formatPreview(result.result, toolCall.toolName);
+          if (preview) {
+            console.log(chalk.dim(`${preview}`));
+          }
         }
       } else {
         console.log(chalk.red(`❌ ${toolCall.toolName} failed: ${result.error || 'Unknown error'}`));
@@ -71,6 +81,57 @@ export class ContinuationHandler {
     }
     
     return results;
+  }
+
+  // Extract key parameters to show (instead of full JSON dump)
+  // @ts-ignore - Complex parameter types are handled at runtime
+  private getKeyParameters(toolName: string, parameters: Record<string, any>): string | null {
+    switch (toolName) {
+      case 'write_file':
+      case 'read_file':
+        return `path: ${parameters.path}`;
+      case 'run_command':
+        return `command: ${parameters.command}`;
+      case 'list_directory':
+        return parameters.path ? `path: ${parameters.path}` : 'path: .';
+      case 'create_directory':
+        return `path: ${parameters.path}`;
+      case 'execute_code':
+        return `language: ${parameters.language}`;
+      case 'diff_files':
+        return `${parameters.file1} vs ${parameters.file2}`;
+      default:
+        return null;
+    }
+  }
+
+  // Determine if we should show a preview of the result
+  private shouldShowPreview(toolName: string): boolean {
+    return ['list_directory', 'run_command', 'git_diff'].includes(toolName);
+  }
+
+  // Format preview based on tool type
+  private formatPreview(result: string, toolName: string): string | null {
+    if (!result) return null;
+    
+    switch (toolName) {
+      case 'list_directory': {
+        const files = result.split('\n').filter(line => line.trim());
+        return files.length > 3 
+          ? `${files.slice(0, 3).join(', ')}... (${files.length} items)`
+          : files.join(', ');
+      }
+      case 'run_command': {
+        const lines = result.split('\n').filter(line => line.trim());
+        return lines.length > 2
+          ? `${lines.slice(0, 2).join('\n')}...`
+          : result.trim();
+      }
+      default: {
+        const preview = result.split('\n').slice(0, 2).join('\n');
+        return preview.length > 100 ? `${preview.substring(0, 100)}...` : preview;
+      }
+    }
   }
 
   // Create continuation request
