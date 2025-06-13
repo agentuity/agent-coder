@@ -83,24 +83,9 @@ async function getInput() {
       message: chalk.blue('You:'),
       prefix: '💬',
       transformer: (input) => {
-        // Show helpful hints for slash commands
+        // Show available commands only when user types just "/"
         if (input === '/') {
           return chalk.cyan('/') + chalk.dim(' (type command name: help, clear, session, context, diff, diff-save, quit)');
-        }
-        if (input.startsWith('/h')) {
-          return chalk.cyan(input) + chalk.dim('elp');
-        }
-        if (input.startsWith('/c') && input.length === 2) {
-          return chalk.cyan(input) + chalk.dim('lear, context');
-        }
-        if (input.startsWith('/s')) {
-          return chalk.cyan(input) + chalk.dim('ession');
-        }
-        if (input.startsWith('/d')) {
-          return chalk.cyan(input) + chalk.dim('iff, diff-save');
-        }
-        if (input.startsWith('/q')) {
-          return chalk.cyan(input) + chalk.dim('uit');
         }
         return input;
       }
