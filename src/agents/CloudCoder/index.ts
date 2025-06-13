@@ -36,7 +36,6 @@ interface ContinuationRequest {
 	originalMessage?: string;
 }
 
-// Tool schemas (copied from tools.ts but without execution logic)
 const toolSchemas = {
 	read_file: z.object({
 		path: z.string().describe('The file path to read'),
