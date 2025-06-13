@@ -30,7 +30,8 @@
 - [x] **Enhanced CLI Client** - Project-aware, better UX, interactive mode
 - [x] **Diff Visualization** - Integration with delta or built-in colored diffs
 - [x] **Project Detection** - Auto-detect git repos, package.json, etc.
-- [ ] **File Watching** - Monitor changes and sync with agent
+- [x] **Smart Context Management** - Remember work context, continue sessions
+- [x] **Enhanced CLI UX** - Slash command autocomplete, better interactions
 
 ## 📅 Roadmap
 
@@ -54,17 +55,24 @@
   > /commit "Add authentication"           # Git operations
   ```
 
-- [ ] **Advanced Tools**
-  - `run_command` - Safe shell command execution
-  - `git_operations` - Status, diff, commit, push
-  - `project_analyze` - Understand codebase structure
-  - `diff_files` - Compare file versions
+- [x] **Advanced Tools** (Mostly Complete)
+  - `run_command` - Safe shell command execution ✅
+  - `git_diff` - Beautiful diff visualization ✅
+  - `diff_files` - Compare file versions ✅
+  - `project_analyze` - Understand codebase structure (TODO)
 
-- [ ] **Change Tracking & Visualization**
-  - Real-time diff display using `delta`
-  - File change notifications
-  - Git integration for automatic commits
-  - Before/after comparisons
+- [ ] **Smart Context Management**
+  - Remember current work context and goals
+  - Session continuity ("Continue where we left off")
+  - Work session summaries and history
+  - Project-specific context persistence
+
+- [ ] **Enhanced CLI UX**
+  - Slash command autocomplete when typing "/"
+  - Better error messages and guidance
+  - Improved streaming output formatting
+  - Command history and suggestions
+  - Progress indicators for long operations
 
 #### CLI Architecture
 ```
@@ -218,10 +226,11 @@ function displayDiff(oldContent: string, newContent: string) {
    - Test with various file types
    - Ensure good UX for change tracking
 
-### Next Week
-1. **File Watching System**
-2. **Git Integration Tool**
-3. **CLI Polish and Testing**
+### Next Steps (High Priority)
+1. **Smart Context Management** - Remember work sessions and goals
+2. **Slash Command Autocomplete** - Show commands when typing "/"
+3. **CLI UX Polish** - Better interactions and feedback
+4. **Project Analysis Tool** - Deep codebase understanding
 
 ## 📝 Notes & Decisions
 

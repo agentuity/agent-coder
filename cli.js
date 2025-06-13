@@ -32,6 +32,56 @@ if (!API_KEY) {
 // Session management
 let sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
+// Available slash commands
+const slashCommands = [
+  { name: '/help', description: 'Show available commands' },
+  { name: '/clear', description: 'Clear screen and show header' },
+  { name: '/session', description: 'Start a new session' },
+  { name: '/context', description: 'Show current work context' },
+  { name: '/diff', description: 'Show git diff with beautiful formatting' },
+  { name: '/diff-save', description: 'Save full diff to file for large changes' },
+  { name: '/quit', description: 'Exit the CLI' },
+];
+
+// Smart input handler with command hints
+async function getInput() {
+  // Show available slash commands hint
+  const commandHint = chalk.dim('\n💡 Type "/" for commands: /help /clear /session /context /diff /diff-save /quit\n');
+  
+  const { message } = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'message',
+      message: chalk.blue('You:'),
+      prefix: '💬',
+      transformer: (input) => {
+        // Show helpful hints for slash commands
+        if (input === '/') {
+          return chalk.cyan('/') + chalk.dim(' (type command name: help, clear, session, context, diff, diff-save, quit)');
+        }
+        if (input.startsWith('/h')) {
+          return chalk.cyan(input) + chalk.dim('elp');
+        }
+        if (input.startsWith('/c') && input.length === 2) {
+          return chalk.cyan(input) + chalk.dim('lear, context');
+        }
+        if (input.startsWith('/s')) {
+          return chalk.cyan(input) + chalk.dim('ession');
+        }
+        if (input.startsWith('/d')) {
+          return chalk.cyan(input) + chalk.dim('iff, diff-save');
+        }
+        if (input.startsWith('/q')) {
+          return chalk.cyan(input) + chalk.dim('uit');
+        }
+        return input;
+      }
+    }
+  ]);
+  
+  return message;
+}
+
 // Display beautiful header
 function showHeader() {
   console.clear();
@@ -88,17 +138,24 @@ async function sendMessage(message, showSpinner = true) {
 
       // Add enhanced formatting for diff content and tool calls
       const formattedChunk = chunk
-      .replace(/🔧 Using tool:/g, chalk.blue('🔧 Using tool:'))
-      .replace(/📋 Parameters:/g, chalk.cyan('📋 Parameters:'))
-      .replace(/✅ Tool completed/g, chalk.green('✅ Tool completed'))
-        .replace(/💡 \*\*Large diff detected!\*\*/g, chalk.yellow('💡 **Large diff detected!**'))
-        .replace(/📊 \*\*Diff Statistics:\*\*/g, chalk.cyan('📊 **Diff Statistics:**'))
+        .replace(/🔧 Using tool:/g, chalk.blue('🔧 Using tool:'))
+        .replace(/📋 Parameters:/g, chalk.cyan('📋 Parameters:'))
+        .replace(/✅ Tool completed/g, chalk.green('✅ Tool completed'))
+        .replace(
+          /💡 \*\*Large diff detected!\*\*/g,
+          chalk.yellow('💡 **Large diff detected!**')
+        )
+        .replace(
+          /📊 \*\*Diff Statistics:\*\*/g,
+          chalk.cyan('📊 **Diff Statistics:**')
+        )
         .replace(/🎨 \*\*Git Diff\*\*/g, chalk.magenta('🎨 **Git Diff**'))
         .replace(/📄 \*\*Git Diff\*\*/g, chalk.blue('📄 **Git Diff**'));
-      
+
       process.stdout.write(formattedChunk);
     }
 
+    // biome-ignore lint/style/useTemplate: <explanation>
     console.log('\n' + chalk.dim('─'.repeat(60)));
   } catch (error) {
     if (spinner) spinner.fail(chalk.red('Failed to communicate with agent'));
@@ -117,6 +174,7 @@ async function interactiveMode() {
         `  ${chalk.white('/help')}     - Show this help\n` +
         `  ${chalk.white('/clear')}    - Clear screen\n` +
         `  ${chalk.white('/session')}  - New session\n` +
+        `  ${chalk.white('/context')}   - Show work context\n` +
         `  ${chalk.white('/diff')}     - Show git diff\n` +
         `  ${chalk.white('/diff-save')} - Save full diff to file\n` +
         `  ${chalk.white('/quit')}     - Exit\n\n` +
@@ -136,26 +194,35 @@ async function interactiveMode() {
   while (true) {
     console.log(); // Empty line for spacing
 
-    const { message } = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'message',
-        message: chalk.blue('You:'),
-        prefix: '💬',
-      },
-    ]);
+    const message = await getInput();
 
     if (!message.trim()) continue;
 
-    // Handle special commands
-    switch (message.toLowerCase().trim()) {
+    // Handle special commands and suggestions
+    const trimmedMessage = message.toLowerCase().trim();
+    
+    // Check for partial slash commands and suggest
+    if (trimmedMessage.startsWith('/') && !slashCommands.some(cmd => cmd.name === trimmedMessage)) {
+      const matches = slashCommands.filter(cmd => cmd.name.startsWith(trimmedMessage));
+      if (matches.length > 0) {
+        console.log(chalk.yellow('💡 Did you mean:'));
+        matches.forEach(match => {
+          console.log(`  ${chalk.cyan(match.name)} - ${chalk.dim(match.description)}`);
+        });
+        continue;
+      }
+    }
+    
+    switch (trimmedMessage) {
       case '/help':
         console.log(
           boxen(
+            // biome-ignore lint/style/useTemplate: <explanation>
             `${chalk.green('Available Commands:')}\n\n` +
               `${chalk.white('/help')}     - Show this help\n` +
               `${chalk.white('/clear')}    - Clear screen and show header\n` +
               `${chalk.white('/session')}  - Start a new session\n` +
+              `${chalk.white('/context')}   - Show current work context and goals\n` +
               `${chalk.white('/diff')}     - Show git diff with beautiful formatting\n` +
               `${chalk.white('/diff-save')} - Save full diff to file for large changes\n` +
               `${chalk.white('/quit')}     - Exit the CLI\n\n` +
@@ -178,8 +245,14 @@ async function interactiveMode() {
         console.log(chalk.green('✨ New session started!'));
         continue;
 
+      case '/context':
+        await sendMessage('What are we currently working on? Show me the work context.');
+        continue;
+
       case '/diff':
-        await sendMessage('Show me the git diff of all changed files with beautiful formatting.');
+        await sendMessage(
+          'Show me the git diff of all changed files with beautiful formatting.'
+        );
         continue;
 
       case '/diff-save': {
@@ -220,6 +293,7 @@ async function detectProject() {
 
   if (detectedFiles.length > 0) {
     console.log(chalk.green('🔍 Project detected:'));
+    // biome-ignore lint/complexity/noForEach: <explanation>
     detectedFiles.forEach((file) => {
       const icon = file === '.git' ? '📁' : '📄';
       console.log(`  ${icon} ${file}`);

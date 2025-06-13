@@ -10,6 +10,8 @@ import {
   runCommandSchema,
   diffFilesSchema,
   gitDiffSchema,
+  setWorkContextSchema,
+  getWorkContextSchema,
   readFileTool,
   writeFileTool,
   listDirectoryTool,
@@ -17,7 +19,9 @@ import {
   executeCodeTool,
   runCommandTool,
   diffFilesTool,
-  gitDiffTool
+  gitDiffTool,
+  setWorkContextTool,
+  getWorkContextTool
 } from './tools';
 
 interface ConversationMessage {
@@ -40,6 +44,8 @@ Key capabilities:
 - Run shell commands safely (git, npm, build tools, Unix commands)
 - Show beautiful diffs with delta integration for file comparisons
 - Display git diffs with syntax highlighting and formatting
+- Remember work context and goals across sessions
+- Maintain conversation continuity and project awareness
 - Analyze code structure and suggest improvements
 - Help with debugging and testing
 - Work with Python, JavaScript, TypeScript, and Go codebases
@@ -83,7 +89,13 @@ When showing changes:
 - Use git_diff tool to show repository changes with beautiful formatting
 - Use diff_files tool to compare specific file versions
 - Delta integration provides syntax highlighting and better readability
-- Always show diffs when files are modified or when user asks about changes`;
+- Always show diffs when files are modified or when user asks about changes
+
+When managing work context:
+- Use set_work_context when user mentions working on something specific
+- Use get_work_context when user asks "what are we working on" or wants to continue
+- Always check context at start of sessions to maintain continuity
+- Update context status as work progresses (starting → in-progress → testing → complete)`;
 
 export default async function Agent(
 	req: AgentRequest,
@@ -159,6 +171,16 @@ export default async function Agent(
 				description: 'Show git diff for changed files with beautiful formatting. Use this to see what has changed in the repository.',
 				parameters: gitDiffSchema,
 				execute: async (params) => await gitDiffTool.execute(params, ctx)
+			}),
+			set_work_context: tool({
+				description: 'Set the current work context and goals for the session. Use this to remember what we are working on.',
+				parameters: setWorkContextSchema,
+				execute: async (params) => await setWorkContextTool.execute(params, ctx)
+			}),
+			get_work_context: tool({
+				description: 'Get the current work context and goals. Use this when user asks "what are we working on" or to continue previous work.',
+				parameters: getWorkContextSchema,
+				execute: async (params) => await getWorkContextTool.execute(params, ctx)
 			})
 		};
 

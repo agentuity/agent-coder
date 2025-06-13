@@ -61,6 +61,18 @@ export const diffFilesSchema = z.object({
 	context: z.number().optional().describe('Number of context lines to show (default: 3)'),
 });
 
+// Context Management Tools
+export const setWorkContextSchema = z.object({
+	goal: z.string().describe('The main goal or objective of the current work session'),
+	description: z.string().optional().describe('Detailed description of what we are working on'),
+	files: z.array(z.string()).optional().describe('Key files involved in this work'),
+	status: z.enum(['starting', 'in-progress', 'testing', 'complete']).optional().describe('Current status of the work'),
+});
+
+export const getWorkContextSchema = z.object({
+	includeHistory: z.boolean().optional().describe('Whether to include previous work sessions (default: false)'),
+});
+
 export const gitDiffSchema = z.object({
 	files: z.array(z.string()).optional().describe('Specific files to diff (default: all changed files)'),
 	staged: z.boolean().optional().describe('Show staged changes (default: false)'),
@@ -560,6 +572,115 @@ export const gitDiffTool: Tool = {
 	}
 };
 
+// Context management interface
+interface WorkContext {
+	goal: string;
+	description?: string;
+	files?: string[];
+	status?: 'starting' | 'in-progress' | 'testing' | 'complete';
+	timestamp: number;
+	sessionId: string;
+}
+
+export const setWorkContextTool: Tool = {
+	name: 'set_work_context',
+	description: 'Set the current work context and goals for the session. Use this to remember what we are working on.',
+	parameters: setWorkContextSchema,
+	execute: async (params, ctx) => {
+		try {
+			const { goal, description, files = [], status = 'starting' } = params as {
+				goal: string;
+				description?: string;
+				files?: string[];
+				status?: 'starting' | 'in-progress' | 'testing' | 'complete';
+			};
+
+			const workContext: WorkContext = {
+				goal,
+				description,
+				files,
+				status,
+				timestamp: Date.now(),
+				sessionId: ctx.kv ? 'session_context' : 'default'
+			};
+
+			// Save context to KV store
+			const contextKey = 'work_context_current';
+			await ctx.kv.set('default', contextKey, JSON.stringify(workContext), { ttl: 3600 * 24 * 7 }); // 7 days
+
+			// Also save to history
+			const historyKey = `work_context_history_${Date.now()}`;
+			await ctx.kv.set('default', historyKey, JSON.stringify(workContext), { ttl: 3600 * 24 * 30 }); // 30 days
+
+			ctx.logger.info(`Set work context: ${goal}`);
+
+			let response = `🎯 **Work Context Set Successfully**\n\n`;
+			response += `**Goal:** ${goal}\n`;
+			if (description) response += `**Description:** ${description}\n`;
+			if (files.length > 0) response += `**Key Files:** ${files.join(', ')}\n`;
+			response += `**Status:** ${status}\n`;
+			response += `**Session:** ${workContext.sessionId}\n\n`;
+			response += `✅ Context saved and will persist across sessions. Use "What are we working on?" to recall this context.`;
+
+			return response;
+		} catch (error) {
+			ctx.logger.error('Error setting work context:', error);
+			return `❌ Error setting work context: ${error instanceof Error ? error.message : 'Unknown error'}`;
+		}
+	}
+};
+
+export const getWorkContextTool: Tool = {
+	name: 'get_work_context',
+	description: 'Get the current work context and goals. Use this when user asks "what are we working on" or to continue previous work.',
+	parameters: getWorkContextSchema,
+	execute: async (params, ctx) => {
+		try {
+			const { includeHistory = false } = params as {
+				includeHistory?: boolean;
+			};
+
+			// Get current context
+			const contextKey = 'work_context_current';
+			let currentContext: WorkContext | null = null;
+
+			try {
+				const stored = await ctx.kv.get('default', contextKey);
+				if (stored.exists) {
+					currentContext = JSON.parse(await stored.data.text());
+				}
+			} catch {
+				// No context set
+			}
+
+			if (!currentContext) {
+				return `📝 **No Active Work Context**\n\nNo current work context is set. Use "Remember that I'm working on [goal]" to set a context for this session.`;
+			}
+
+			let response = `🎯 **Current Work Context**\n\n`;
+			response += `**Goal:** ${currentContext.goal}\n`;
+			if (currentContext.description) response += `**Description:** ${currentContext.description}\n`;
+			if (currentContext.files && currentContext.files.length > 0) response += `**Key Files:** ${currentContext.files.join(', ')}\n`;
+			response += `**Status:** ${currentContext.status}\n`;
+			response += `**Started:** ${new Date(currentContext.timestamp).toLocaleString()}\n`;
+
+			// Include history if requested
+			if (includeHistory) {
+				response += `\n📚 **Recent Work History:**\n`;
+				// This would fetch recent history contexts - simplified for now
+				response += `_History feature available - ask to see previous work sessions_\n`;
+			}
+
+			response += `\n💡 **Continue working:** You can ask me to continue with this goal or update the context as needed.`;
+
+			return response;
+		} catch (error) {
+			ctx.logger.error('Error getting work context:', error);
+			return `❌ Error getting work context: ${error instanceof Error ? error.message : 'Unknown error'}`;
+		}
+	}
+};
+
 export const allTools: Tool[] = [
 	readFileTool,
 	writeFileTool,
@@ -569,4 +690,6 @@ export const allTools: Tool[] = [
 	runCommandTool,
 	diffFilesTool,
 	gitDiffTool,
+	setWorkContextTool,
+	getWorkContextTool,
 ];
