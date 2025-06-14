@@ -84,6 +84,6 @@ export async function generateAgentUrl(mode: 'local' | 'cloud'): Promise<string>
     return `http://127.0.0.1:${port}/${cloudCoder.id}`;
   }
   
-  // For cloud mode, use placeholder that user will replace
-  return `https://your-agent.agentuity.cloud/${cloudCoder.id}`;
+  // For cloud mode, use the actual Agentuity cloud URL
+  return `https://agentuity.ai/api/${cloudCoder.id}`;
 }
