@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 import { Command } from 'commander';
 import chalk from 'chalk';
@@ -15,6 +15,10 @@ import TerminalRenderer from 'marked-terminal';
 
 // Load environment variables
 dotenv.config();
+
+// Capture the actual terminal working directory before anything else happens
+// This is needed because the shell script changes to its own directory
+const ACTUAL_TERMINAL_CWD = process.env.ORIGINAL_TERMINAL_CWD || process.env.PWD || process.cwd();
 
 // Configure markdown rendering for terminal
 marked.setOptions({
@@ -55,7 +59,14 @@ function processStreamingLine(line) {
     .replace(/✅ toolu_[a-zA-Z0-9]+: Success\s*\n?/g, '')
     .replace(/❌ toolu_[a-zA-Z0-9]+: Error\s*\n?/g, '')
     // Remove "Tool execution completed" messages since we show our own
-    .replace(/Tool execution completed\. Based on the results.*?\n?/g, '');
+    .replace(/Tool execution completed\. Based on the results.*?\n?/g, '')
+    // Remove hidden tool call markers completely
+    .replace(/__TOOL_CALLS_HIDDEN__.*?__END_CALLS_HIDDEN__/gs, '');
+
+  // Filter out hidden tool call lines completely
+  if (/__TOOL_CALLS_HIDDEN__/.test(processedLine) || /__END_CALLS_HIDDEN__/.test(processedLine)) {
+    return '';
+  }
 
   // Simple parameter line filtering - only filter obvious parameter lines
   // This is more conservative to avoid hiding legitimate content
@@ -189,8 +200,8 @@ if (!API_KEY) {
 // Session management
 let sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-// Continuation handler for tool calls
-const continuationHandler = new ContinuationHandler();
+// Continuation handler for tool calls (pass actual terminal directory)
+const continuationHandler = new ContinuationHandler(ACTUAL_TERMINAL_CWD);
 
 // Available slash commands
 const slashCommands = [
@@ -523,9 +534,13 @@ async function detectProject() {
   ];
   const detectedFiles = [];
 
+  // Use the actual terminal directory for file access
+  const { access: accessFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+
   for (const file of projectFiles) {
     try {
-      await access(file);
+      await accessFile(join(ACTUAL_TERMINAL_CWD, file));
       detectedFiles.push(file);
     } catch {
       // File doesn't exist, ignore

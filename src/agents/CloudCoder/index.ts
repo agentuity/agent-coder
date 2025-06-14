@@ -50,6 +50,25 @@ const toolSchemas = {
 	create_directory: z.object({
 		path: z.string().describe('The directory path to create'),
 	}),
+	move_file: z.object({
+		source: z.string().describe('Source file path'),
+		destination: z.string().describe('Destination file path'),
+	}),
+	delete_file: z.object({
+		path: z.string().describe('File path to delete'),
+		confirm: z.boolean().optional().default(true).describe('Confirm deletion (default: true)'),
+	}),
+	grep_search: z.object({
+		pattern: z.string().describe('Regex pattern to search for'),
+		path: z.string().optional().describe('Directory to search in (default: current directory)'),
+		filePattern: z.string().optional().describe('File pattern to match (e.g., *.ts, *.py)'),
+		caseSensitive: z.boolean().optional().default(false).describe('Case sensitive search (default: false)'),
+	}),
+	find_files: z.object({
+		pattern: z.string().describe('File name pattern to find (supports wildcards)'),
+		path: z.string().optional().describe('Starting directory (default: current directory)'),
+		type: z.enum(['file', 'directory', 'both']).optional().default('file').describe('Type to search for'),
+	}),
 	execute_code: z.object({
 		language: z.enum(['python', 'javascript', 'typescript']).describe('The programming language'),
 		code: z.string().describe('The code to execute'),
@@ -83,74 +102,75 @@ const toolSchemas = {
 	}),
 };
 
-const SYSTEM_PROMPT = `You are an expert coding agent that helps developers write, analyze, and improve code. You have access to powerful tools for file operations, code execution, and shell commands.
+const SYSTEM_PROMPT = `You are CloudCoder, an expert AI coding assistant by Agentuity. You execute tools on the user's local machine via CLI.
 
-IMPORTANT: You are running in CLOUD MODE. When you call tools, they will be executed on the user's LOCAL machine by the CLI client, not in the cloud. The CLI will execute your tool calls and send back the results.
+## CORE PRINCIPLES
 
-Key capabilities:
-- Read and write files in any codebase (executed locally)
-- Execute code safely in sandboxed environments (executed locally)
-- Run shell commands safely (executed locally)
-- Show beautiful diffs with delta integration for file comparisons
-- Display git diffs with syntax highlighting and formatting
-- Remember work context and goals across sessions
-- Maintain conversation continuity and project awareness
-- Analyze code structure and suggest improvements
-- Help with debugging and testing
-- Work with Python, JavaScript, TypeScript, and Go codebases
+1. **BE EFFICIENT**: Only use tools when absolutely necessary. Tools are expensive.
+   - If you know the answer, respond without tools
+   - Plan all tool calls upfront and execute in parallel when possible
+   - Never make redundant calls (e.g., reading the same file twice)
 
-TOOL EXECUTION FLOW:
-1. When you call a tool, it will be sent to the CLI for local execution
-2. The CLI will execute the tool on the user's machine
-3. The CLI will send back the results
-4. You will then continue with your response based on the results
+2. **BE COMPLETE**: You're an agent. Finish the ENTIRE task.
+   - "What does X do?" → Find it → Read it → Explain it
+   - "Create Y" → Write code → Test it → Verify it works
+   - "Fix bug Z" → Investigate → Fix → Test → Verify
+   - Don't stop after first tool call - chain operations until task is complete
 
-IMPORTANT: Always complete the full task requested by the user. Use multiple tools in sequence as needed:
-- If asked "What does X file do?", first locate the file, then read it, then explain its purpose
-- If asked to create something, write the code AND test it if possible
-- If asked to analyze a project, explore the structure AND examine key files
-- If asked to fix an issue, investigate the problem, implement the fix, AND verify it works
+3. **BE CONCISE**: Action-oriented responses only.
+   - No lengthy explanations unless requested
+   - Show results, not process descriptions
+   - Get straight to the point
 
-Guidelines:
-- Always read existing code before making changes
-- Test code changes when possible using the execute_code tool
-- Use shell commands for git operations, running tests, building projects
-- Provide clear explanations of what you're doing and why
-- Ask for clarification when requirements are unclear
-- Use appropriate file organization and coding best practices
-- Be proactive in suggesting improvements and catching potential issues
-- Follow through on multi-step tasks - don't stop after the first tool call
+4. **BE PROACTIVE**: Don't ask permission. Just do it.
+   - Chain operations to complete tasks
+   - Retry up to 3 times on failure
+   - Only ask when truly stuck
 
-When working with files:
-- Use relative paths from the current working directory
+## TOOL EXECUTION MODEL
+- You run in cloud, tools execute on user's local machine
+- Tool calls are sent to CLI → executed locally → results returned
+- Use multiple tools in sequence as needed
+- Plan tool usage upfront for efficiency
+
+## CODE QUALITY
+- Fix root causes, not symptoms  
+- Match existing code style exactly
+- Remove ALL debug comments before finishing
+- Test changes when possible
+- Use appropriate file organization
+
+## TECHNICAL GUIDELINES
+
+### File Operations
+- Use relative paths from current working directory
 - Create directories as needed when writing files
 - Always check file contents before modifying them
-- If exploring a project, examine multiple relevant files to understand the structure
+- Use move_file for reorganization, delete_file for cleanup
 
-When executing code:
-- Choose the appropriate language (python, javascript, typescript)
-- Include proper error handling
+### Code Execution (Python/JS/TS)
+- Include proper error handling in all code
 - Test with sample data when applicable
-- Always run code after writing it to verify it works
-
-When using shell commands:
-- Use for git operations (status, add, commit, push)
-- Run build scripts, tests, and package managers (npm, yarn, bun)
-- Common Unix commands are available for file operations
+- Always run code after writing to verify it works
 - Commands are safety-checked and sandboxed
-- Check command output and explain any issues or results
 
-When showing changes:
-- Use git_diff tool to show repository changes with beautiful formatting
-- Use diff_files tool to compare specific file versions
-- Delta integration provides syntax highlighting and better readability
-- Always show diffs when files are modified or when user asks about changes
+### Shell Commands
+- Git operations: status, add, commit, push, build tools
+- Package managers: npm, yarn, bun supported
+- All commands are safety-checked and sandboxed
 
-When managing work context:
-- Use set_work_context when user mentions working on something specific
-- Use get_work_context when user asks "what are we working on" or wants to continue
-- Always check context at start of sessions to maintain continuity
-- Update context status as work progresses (starting → in-progress → testing → complete)`;
+### Diffs & Changes
+- Use git_diff for repository changes (has delta syntax highlighting)
+- Use diff_files for specific file comparisons
+- Always show diffs when files are modified
+- Delta integration provides enhanced readability
+
+### Work Context
+- Use set_work_context when user mentions specific work
+- Progress status: starting → in-progress → testing → complete
+- Use get_work_context when user asks "what are we working on"
+
+Remember: Complete the task. Use tools wisely. Be brief.`;
 
 // Helper function to check if request is a continuation
 function isContinuationRequest(data: string): { isContinuation: boolean; parsedData?: ContinuationRequest } {
@@ -212,18 +232,39 @@ export default async function CloudAgent(
 
 		// Handle continuation differently
 		if (isContinuation && parsedData) {
-			// Process tool results and return a simple response
-			let responseText = '\n📨 Received tool results:\n';
-
-			for (const result of toolResults) {
-				if (result.success) {
-					responseText += `✅ ${result.id}: Success\n${result.result}\n\n`;
-				} else {
-					responseText += `❌ ${result.id}: Error\n${result.error}\n\n`;
+			// Intelligently process tool results
+			const errors = toolResults.filter(r => !r.success);
+			const successes = toolResults.filter(r => r.success);
+			
+			let responseText = '';
+			
+			// Only show errors prominently
+			if (errors.length > 0) {
+				responseText += `❌ ${errors.length} tool(s) failed:\n`;
+				for (const err of errors) {
+					responseText += `• ${err.id}: ${err.error}\n`;
+				}
+				responseText += '\n';
+			}
+			
+			// Summarize successful results concisely
+			if (successes.length > 0) {
+				const fileReads = successes.filter(r => r.id.includes('read_file'));
+				const fileWrites = successes.filter(r => r.id.includes('write_file'));
+				const commands = successes.filter(r => r.id.includes('run_command'));
+				const searches = successes.filter(r => r.id.includes('grep_search') || r.id.includes('find_files'));
+				
+				if (fileReads.length > 0) responseText += `📄 Read ${fileReads.length} file(s)\n`;
+				if (fileWrites.length > 0) responseText += `✏️  Modified ${fileWrites.length} file(s)\n`;
+				if (commands.length > 0) responseText += `⚡ Executed ${commands.length} command(s)\n`;
+				if (searches.length > 0) {
+					const totalMatches = searches.reduce((sum, s) => 
+						sum + (s.result?.split('\n').length || 0), 0);
+					responseText += `🔍 Found ${totalMatches} search result(s)\n`;
 				}
 			}
-
-			responseText += 'Tool execution completed. Based on the results, I can continue helping you with your task.';
+			
+			responseText += '\nTask completed.';
 
 			// Add assistant response to context
 			conversationContext.messages.push({
@@ -276,6 +317,26 @@ export default async function CloudAgent(
 				parameters: toolSchemas.create_directory,
 				execute: async () => 'Tool call captured'
 			}),
+			move_file: tool({
+				description: 'Move/rename file - will be executed on local machine',
+				parameters: toolSchemas.move_file,
+				execute: async () => 'Tool call captured'
+			}),
+			delete_file: tool({
+				description: 'Delete file - will be executed on local machine',
+				parameters: toolSchemas.delete_file,
+				execute: async () => 'Tool call captured'
+			}),
+			grep_search: tool({
+				description: 'Search for pattern in files - will be executed on local machine',
+				parameters: toolSchemas.grep_search,
+				execute: async () => 'Tool call captured'
+			}),
+			find_files: tool({
+				description: 'Find files by pattern - will be executed on local machine',
+				parameters: toolSchemas.find_files,
+				execute: async () => 'Tool call captured'
+			}),
 			execute_code: tool({
 				description: 'Execute code - will be executed on local machine',
 				parameters: toolSchemas.execute_code,
@@ -315,7 +376,7 @@ export default async function CloudAgent(
 			messages,
 			// @ts-ignore - Type workaround for cloud mode
 			tools: cloudTools,
-			maxSteps: 10, // Allow multiple tool calls
+			maxSteps: 10,
 		});
 
 		// Create response stream that handles tool calls differently
@@ -346,9 +407,8 @@ export default async function CloudAgent(
 
 								toolCallsToSend.push(toolCall);
 
-								// Send tool call info to CLI
-								const toolCallMessage = `\n🔧 Requesting tool execution: ${chunk.toolName}\n📋 Parameters: ${JSON.stringify(chunk.args, null, 2)}\n`;
-								controller.enqueue(toolCallMessage);
+								// Show only the clean tool name
+								controller.enqueue(`\n🔧 ${chunk.toolName}`);
 								waitingForToolResults = true;
 								break;
 							}
@@ -365,7 +425,7 @@ export default async function CloudAgent(
 						}
 					}
 
-					// If we have tool calls, send them as JSON for CLI to process
+					// If we have tool calls, send them in a completely hidden way for CLI to parse
 					if (toolCallsToSend.length > 0) {
 						const toolCallsJson = JSON.stringify({
 							type: 'tool_calls_required',
@@ -373,8 +433,8 @@ export default async function CloudAgent(
 							sessionId
 						});
 
-						controller.enqueue(`\n\n---TOOL_CALLS---\n${toolCallsJson}\n---END_TOOL_CALLS---\n`);
-						controller.enqueue('\n⏳ Waiting for local tool execution...\n');
+						// Send tool calls in a way that's completely invisible to user
+						controller.enqueue(`\n__TOOL_CALLS_HIDDEN__${toolCallsJson}__END_CALLS_HIDDEN__\n`);
 					}
 
 					// Tool results are handled separately for continuation requests

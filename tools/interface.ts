@@ -47,6 +47,29 @@ export const toolSchemas = {
     path: z.string().describe('The directory path to create'),
   }),
   
+  move_file: z.object({
+    source: z.string().describe('Source file path'),
+    destination: z.string().describe('Destination file path'),
+  }),
+  
+  delete_file: z.object({
+    path: z.string().describe('File path to delete'),
+    confirm: z.boolean().optional().default(true).describe('Confirm deletion (default: true)'),
+  }),
+  
+  grep_search: z.object({
+    pattern: z.string().describe('Regex pattern to search for'),
+    path: z.string().optional().describe('Directory to search in (default: current directory)'),
+    filePattern: z.string().optional().describe('File pattern to match (e.g., *.ts, *.py)'),
+    caseSensitive: z.boolean().optional().default(false).describe('Case sensitive search (default: false)'),
+  }),
+  
+  find_files: z.object({
+    pattern: z.string().describe('File name pattern to find (supports wildcards)'),
+    path: z.string().optional().describe('Starting directory (default: current directory)'),
+    type: z.enum(['file', 'directory', 'both']).optional().default('file').describe('Type to search for'),
+  }),
+  
   execute_code: z.object({
     language: z.enum(['python', 'javascript', 'typescript']).describe('The programming language'),
     code: z.string().describe('The code to execute'),
@@ -91,6 +114,10 @@ export const toolDescriptions = {
   write_file: 'Write content to a file. Use this to create new files or modify existing ones.',
   list_directory: 'List the contents of a directory. Use this to explore project structure.',
   create_directory: 'Create a new directory. Use this to organize code into proper structure.',
+  move_file: 'Move or rename a file. Use this to reorganize files or change file names.',
+  delete_file: 'Delete a file. Use this to remove unwanted files (requires confirmation by default).',
+  grep_search: 'Search for patterns in files using regex. Use this to find code, functions, or text across multiple files.',
+  find_files: 'Find files by name pattern. Use this to locate specific files or file types in the project.',
   execute_code: 'Execute code safely in a sandboxed environment. Use this to run and test code.',
   run_command: 'Execute shell commands safely. Supports git, npm, build tools, and common Unix commands.',
   diff_files: 'Compare two files and show a beautiful diff. Use this to see changes between file versions.',

@@ -60,6 +60,7 @@ class MockKV {
 interface MockContext {
   logger: Logger;
   kv: MockKV;
+  workingDirectory: string;
 }
 
 // Safety configuration for shell commands
@@ -110,7 +111,8 @@ const toolExecutors = {
   async read_file(params: ToolParameters<'read_file'>, ctx: MockContext): Promise<string> {
     try {
       const { path } = params;
-      const content = await readFile(path, 'utf-8');
+      const fullPath = join(ctx.workingDirectory, path);
+      const content = await readFile(fullPath, 'utf-8');
       ctx.logger.info(`Read file: ${path}`);
       return `File content of ${path}:\n\`\`\`\n${content}\n\`\`\``;
     } catch (error) {
@@ -123,9 +125,10 @@ const toolExecutors = {
   async write_file(params: ToolParameters<'write_file'>, ctx: MockContext): Promise<string> {
     try {
       const { path, content } = params;
+      const fullPath = join(ctx.workingDirectory, path);
       // Ensure directory exists
-      await mkdir(dirname(path), { recursive: true });
-      await writeFile(path, content, 'utf-8');
+      await mkdir(dirname(fullPath), { recursive: true });
+      await writeFile(fullPath, content, 'utf-8');
       ctx.logger.info(`Wrote file: ${path}`);
       return `Successfully wrote content to ${path}`;
     } catch (error) {
@@ -138,7 +141,8 @@ const toolExecutors = {
   async list_directory(params: ToolParameters<'list_directory'>, ctx: MockContext): Promise<string> {
     try {
       const { path } = params;
-      const files = await readdir(path, { withFileTypes: true });
+      const fullPath = join(ctx.workingDirectory, path);
+      const files = await readdir(fullPath, { withFileTypes: true });
       const fileList = files.map(file => ({
         name: file.name,
         type: file.isDirectory() ? 'directory' : 'file'
@@ -156,13 +160,122 @@ const toolExecutors = {
   async create_directory(params: ToolParameters<'create_directory'>, ctx: MockContext): Promise<string> {
     try {
       const { path } = params;
-      await mkdir(path, { recursive: true });
+      const fullPath = join(ctx.workingDirectory, path);
+      await mkdir(fullPath, { recursive: true });
       ctx.logger.info(`Created directory: ${path}`);
       return `Successfully created directory ${path}`;
     } catch (error) {
       const { path } = params;
       ctx.logger.error(`Error creating directory ${path}:`, error);
       return `Error creating directory ${path}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  },
+
+  async move_file(params: ToolParameters<'move_file'>, ctx: MockContext): Promise<string> {
+    try {
+      const { source, destination } = params;
+      
+      // Ensure destination directory exists
+      await mkdir(dirname(destination), { recursive: true });
+      
+      // Use Node.js fs to move file (rename)
+      const { rename } = await import('node:fs/promises');
+      await rename(source, destination);
+      
+      ctx.logger.info(`Moved file: ${source} → ${destination}`);
+      return `Successfully moved ${source} to ${destination}`;
+    } catch (error) {
+      const { source, destination } = params;
+      ctx.logger.error(`Error moving file ${source} to ${destination}:`, error);
+      return `Error moving file ${source} to ${destination}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  },
+
+  async delete_file(params: ToolParameters<'delete_file'>, ctx: MockContext): Promise<string> {
+    try {
+      const { path, confirm = true } = params;
+      
+      // Basic safety check - don't delete system files
+      if (path.startsWith('/') || path.includes('..') || path.startsWith('C:')) {
+        return `❌ Cannot delete system path: ${path}`;
+      }
+      
+      const { unlink } = await import('node:fs/promises');
+      await unlink(path);
+      
+      ctx.logger.info(`Deleted file: ${path}`);
+      return `Successfully deleted ${path}`;
+    } catch (error) {
+      const { path } = params;
+      ctx.logger.error(`Error deleting file ${path}:`, error);
+      return `Error deleting file ${path}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  },
+
+  async grep_search(params: ToolParameters<'grep_search'>, ctx: MockContext): Promise<string> {
+    try {
+      const { pattern, path = '.', filePattern, caseSensitive = false } = params;
+      
+      let command = `grep -r ${caseSensitive ? '' : '-i'} -n "${pattern}"`;
+      if (filePattern) {
+        command += ` --include="${filePattern}"`;
+      }
+      command += ` "${path}"`;
+      
+      ctx.logger.info(`Searching for pattern: ${pattern}`);
+      
+      const result = await execAsync(command, {
+        maxBuffer: 1024 * 1024 * 2 // 2MB buffer
+      });
+      
+      if (!result.stdout.trim()) {
+        return `🔍 No matches found for pattern: ${pattern}`;
+      }
+      
+      return `🔍 Search results for "${pattern}":\n\`\`\`\n${result.stdout}\n\`\`\``;
+    } catch (error) {
+      const { pattern } = params;
+      ctx.logger.error(`Error searching for pattern ${pattern}:`, error);
+      
+      if (error instanceof Error && 'code' in error) {
+        const execError = error as { code: number };
+        if (execError.code === 1) {
+          return `🔍 No matches found for pattern: ${pattern}`;
+        }
+      }
+      
+      return `Error searching for pattern ${pattern}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  },
+
+  async find_files(params: ToolParameters<'find_files'>, ctx: MockContext): Promise<string> {
+    try {
+      const { pattern, path = '.', type = 'file' } = params;
+      
+      let command = `find "${path}"`;
+      if (type === 'file') {
+        command += ' -type f';
+      } else if (type === 'directory') {
+        command += ' -type d';
+      }
+      command += ` -name "${pattern}"`;
+      
+      ctx.logger.info(`Finding files with pattern: ${pattern}`);
+      
+      const result = await execAsync(command, {
+        maxBuffer: 1024 * 1024 // 1MB buffer
+      });
+      
+      if (!result.stdout.trim()) {
+        return `📁 No files found matching pattern: ${pattern}`;
+      }
+      
+      const files = result.stdout.trim().split('\n');
+      return `📁 Found ${files.length} file(s) matching "${pattern}":\n${files.map(f => `• ${f}`).join('\n')}`;
+    } catch (error) {
+      const { pattern } = params;
+      ctx.logger.error(`Error finding files with pattern ${pattern}:`, error);
+      return `Error finding files with pattern ${pattern}: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   },
 
@@ -215,7 +328,7 @@ const toolExecutors = {
       ctx.logger.info(`Executing command: ${command} in ${workingDir}`);
 
       const result = await execAsync(command, {
-        cwd: workingDir,
+        cwd: workingDir === '.' ? ctx.workingDirectory : join(ctx.workingDirectory, workingDir),
         timeout: timeout,
         maxBuffer: 1024 * 1024, // 1MB buffer
       });
@@ -456,18 +569,21 @@ export class ToolProxy {
   private logger: Logger;
   private kv: MockKV;
   private ctx: MockContext;
+  private workingDirectory: string;
 
-  constructor(logger?: Logger) {
+  constructor(logger?: Logger, workingDirectory?: string) {
     this.logger = logger || {
       info: (msg: string, ...args: unknown[]) => console.log(`[INFO] ${msg}`, ...args),
       error: (msg: string, ...args: unknown[]) => console.error(`[ERROR] ${msg}`, ...args),
       warn: (msg: string, ...args: unknown[]) => console.warn(`[WARN] ${msg}`, ...args),
     };
     
+    this.workingDirectory = workingDirectory || process.cwd();
     this.kv = new MockKV();
     this.ctx = {
       logger: this.logger,
       kv: this.kv,
+      workingDirectory: this.workingDirectory,
     };
   }
 

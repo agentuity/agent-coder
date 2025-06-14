@@ -5,17 +5,24 @@ import chalk from 'chalk';
 export class ContinuationHandler {
   private toolProxy: ToolProxy;
 
-  constructor() {
+  constructor(workingDirectory?: string) {
     this.toolProxy = new ToolProxy({
       info: (msg: string) => console.log(chalk.dim(`[TOOL] ${msg}`)),
       error: (msg: string) => console.error(chalk.red(`[TOOL ERROR] ${msg}`)),
       warn: (msg: string) => console.warn(chalk.yellow(`[TOOL WARN] ${msg}`)),
-    });
+    }, workingDirectory);
   }
 
   // Parse tool calls from agent response
   parseToolCalls(responseText: string): { hasToolCalls: boolean; toolCallsMessage?: ToolCallsMessage; cleanedResponse: string } {
-    const toolCallsMatch = responseText.match(/---TOOL_CALLS---\n(.*?)\n---END_TOOL_CALLS---/s);
+    // Try new invisible format first, then fall back to old formats
+    let toolCallsMatch = responseText.match(/__TOOL_CALLS_HIDDEN__(.*?)__END_CALLS_HIDDEN__/s);
+    if (!toolCallsMatch) {
+      toolCallsMatch = responseText.match(/<!--TOOL_CALLS_START-->\n(.*?)\n<!--TOOL_CALLS_END-->/s);
+    }
+    if (!toolCallsMatch) {
+      toolCallsMatch = responseText.match(/---TOOL_CALLS---\n(.*?)\n---END_TOOL_CALLS---/s);
+    }
     
     if (!toolCallsMatch) {
       return { hasToolCalls: false, cleanedResponse: responseText };
@@ -24,10 +31,13 @@ export class ContinuationHandler {
     try {
       const toolCallsMessage = JSON.parse(toolCallsMatch[1] || '{}') as ToolCallsMessage;
       
-      // Remove tool calls section from response
+      // Remove tool calls section from response (all formats)
       const cleanedResponse = responseText
+        .replace(/__TOOL_CALLS_HIDDEN__.*?__END_CALLS_HIDDEN__/s, '')
+        .replace(/<!--TOOL_CALLS_START-->\n.*?\n<!--TOOL_CALLS_END-->/s, '')
         .replace(/---TOOL_CALLS---\n.*?\n---END_TOOL_CALLS---/s, '')
-        .replace(/\n⏳ Waiting for local tool execution\.\.\.\n/g, '') || '';
+        .replace(/\n⏳ Waiting for local tool execution\.\.\.\n/g, '')
+        .replace(/\n⏳ Executing \d+ tool\(s\) locally\.\.\.\n/g, '') || '';
       
       return {
         hasToolCalls: true,
@@ -84,12 +94,19 @@ export class ContinuationHandler {
   }
 
   // Extract key parameters to show (instead of full JSON dump)
-  // @ts-ignore - Complex parameter types are handled at runtime
-  private getKeyParameters(toolName: string, parameters: Record<string, any>): string | null {
+  private getKeyParameters(toolName: string, parameters: Record<string, unknown>): string | null {
     switch (toolName) {
       case 'write_file':
       case 'read_file':
         return `path: ${parameters.path}`;
+      case 'move_file':
+        return `${parameters.source} → ${parameters.destination}`;
+      case 'delete_file':
+        return `path: ${parameters.path}`;
+      case 'grep_search':
+        return `pattern: ${parameters.pattern}${parameters.path ? ` in ${parameters.path}` : ''}`;
+      case 'find_files':
+        return `pattern: ${parameters.pattern}${parameters.path ? ` in ${parameters.path}` : ''}`;
       case 'run_command':
         return `command: ${parameters.command}`;
       case 'list_directory':
@@ -107,7 +124,7 @@ export class ContinuationHandler {
 
   // Determine if we should show a preview of the result
   private shouldShowPreview(toolName: string): boolean {
-    return ['list_directory', 'run_command', 'git_diff'].includes(toolName);
+    return ['list_directory', 'run_command', 'git_diff', 'grep_search', 'find_files'].includes(toolName);
   }
 
   // Format preview based on tool type
