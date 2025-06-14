@@ -26,6 +26,59 @@ A powerful AI coding assistant built with Agentuity that provides autonomous cod
 - 🚀 **Works anywhere** - Same experience locally and deployed to cloud
 - 🔄 **Real-time streaming** - See AI thinking and tool execution live
 
+### 🔄 Tool Execution Flow
+
+Here's how the hybrid architecture enables secure tool execution:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI as CLI Client<br/>(Local)
+    participant Agent as Cloud Agent<br/>(Claude LLM)
+    participant Tools as Tool Proxy<br/>(Local)
+    participant FS as File System<br/>(Local)
+
+    User->>CLI: "Fix bug in main.py"
+    CLI->>Agent: HTTP Request: Message + Context
+    
+    Note over Agent: AI analyzes request<br/>and decides tools needed
+    
+    Agent->>CLI: Tool Call: read_file("main.py")
+    CLI->>Tools: Execute read_file locally
+    Tools->>FS: Read file from disk
+    FS-->>Tools: File content
+    Tools-->>CLI: Tool result
+    CLI->>Agent: HTTP Response: Tool result
+    
+    Note over Agent: AI analyzes code<br/>and determines fix
+    
+    Agent->>CLI: Tool Call: write_file("main.py", fixed_content)
+    CLI->>Tools: Execute write_file locally
+    Tools->>FS: Write modified file
+    FS-->>Tools: Write confirmation
+    Tools-->>CLI: Success result
+    CLI->>Agent: HTTP Response: Success
+    
+    Note over Agent: AI prepares<br/>final response
+    
+    Agent-->>CLI: Final response with explanation
+    CLI-->>User: Display: "✅ Fixed bug in main.py"
+```
+
+**Key Security Features:**
+- 🔒 **No file access by cloud** - Files never leave your machine
+- 🛡️ **Sandboxed execution** - Code runs in isolated environments (Riza.io)
+- ✅ **Command whitelisting** - Only safe shell commands allowed
+- 🔑 **Local secrets** - API keys and sensitive data stay local
+
+#### Technical Components
+
+- **CLI Client** (`cli.js`) - Handles user interaction and streams responses
+- **Continuation Handler** (`cli/continuation-handler.ts`) - Parses tool calls and manages execution flow
+- **Tool Proxy** (`cli/tool-proxy.ts`) - Executes tools safely in your local environment
+- **Cloud Agent** (`src/agents/CloudCoder/`) - Claude-powered AI running on Agentuity infrastructure
+- **Tool Interface** (`tools/interface.ts`) - Shared schemas for tool calls and results
+
 ## 🚀 Quick Start
 
 ### 1. Setup
