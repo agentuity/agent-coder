@@ -1,5 +1,16 @@
 # 🤖 Coding Agent
 
+<div align="center">
+    <img src="https://raw.githubusercontent.com/agentuity/cli/refs/heads/main/.github/Agentuity.png" alt="Agentuity" width="100"/> <br/>
+    <strong>Build Agents, Not Infrastructure</strong> <br/>
+	<br/>
+		<a target="_blank" href="https://app.agentuity.com/deploy" alt="Agentuity">
+			<img src="https://app.agentuity.com/img/deploy.svg" /> 
+		</a>
+
+<br />
+</div>
+
 A powerful AI coding assistant built with Agentuity that provides autonomous coding help with real-time tool execution. Features a hybrid cloud-local architecture where the AI runs in the cloud but all tool execution happens securely on your local machine.
 
 ## ✨ Features
