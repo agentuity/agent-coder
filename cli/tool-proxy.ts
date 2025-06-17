@@ -4,7 +4,12 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import { diffLines } from 'diff';
 import Riza from '@riza-io/api';
-import type { ToolCall, ToolResult, ToolName, ToolParameters } from '../tools/interface.js';
+import type {
+  ToolCall,
+  ToolResult,
+  ToolName,
+  ToolParameters,
+} from '../tools/interface.js';
 
 const execAsync = promisify(exec);
 
@@ -12,7 +17,9 @@ const execAsync = promisify(exec);
 function createRizaClient() {
   const apiKey = process.env.RIZA_API_KEY;
   if (!apiKey) {
-    throw new Error('RIZA_API_KEY environment variable is required for code execution');
+    throw new Error(
+      'RIZA_API_KEY environment variable is required for code execution'
+    );
   }
   return new Riza({ apiKey });
 }
@@ -31,27 +38,32 @@ class MockKV {
   async get(namespace: string, key: string) {
     const fullKey = `${namespace}:${key}`;
     const item = this.store.get(fullKey);
-    
+
     if (!item) {
       return { exists: false };
     }
-    
+
     if (item.expires && Date.now() > item.expires) {
       this.store.delete(fullKey);
       return { exists: false };
     }
-    
+
     return {
       exists: true,
       data: {
-        text: () => Promise.resolve(item.data)
-      }
+        text: () => Promise.resolve(item.data),
+      },
     };
   }
 
-  async set(namespace: string, key: string, value: string, options?: { ttl?: number }) {
+  async set(
+    namespace: string,
+    key: string,
+    value: string,
+    options?: { ttl?: number }
+  ) {
     const fullKey = `${namespace}:${key}`;
-    const expires = options?.ttl ? Date.now() + (options.ttl * 1000) : undefined;
+    const expires = options?.ttl ? Date.now() + options.ttl * 1000 : undefined;
     this.store.set(fullKey, { data: value, expires });
   }
 }
@@ -65,11 +77,45 @@ interface MockContext {
 
 // Safety configuration for shell commands
 const ALLOWED_COMMANDS = [
-  'git', 'npm', 'yarn', 'bun', 'pnpm', 'node', 'python', 'python3', 'pip', 'pip3',
-  'cargo', 'rustc', 'go', 'tsc', 'deno', 'docker', 'make', 'cmake',
-  'ls', 'pwd', 'cat', 'echo', 'grep', 'find', 'wc', 'head', 'tail',
-  'mkdir', 'touch', 'cp', 'mv', 'chmod', 'chown',
-  'ps', 'kill', 'killall', 'jobs', 'bg', 'fg'
+  'git',
+  'npm',
+  'yarn',
+  'bun',
+  'pnpm',
+  'node',
+  'python',
+  'python3',
+  'pip',
+  'pip3',
+  'cargo',
+  'rustc',
+  'go',
+  'tsc',
+  'deno',
+  'docker',
+  'make',
+  'cmake',
+  'ls',
+  'pwd',
+  'cat',
+  'echo',
+  'grep',
+  'find',
+  'wc',
+  'head',
+  'tail',
+  'mkdir',
+  'touch',
+  'cp',
+  'mv',
+  'chmod',
+  'chown',
+  'ps',
+  'kill',
+  'killall',
+  'jobs',
+  'bg',
+  'fg',
 ];
 
 const BLOCKED_PATTERNS = [
@@ -91,16 +137,22 @@ function isSafeCommand(command: string): { safe: boolean; reason?: string } {
   // Check for blocked patterns
   for (const pattern of BLOCKED_PATTERNS) {
     if (pattern.test(command)) {
-      return { safe: false, reason: `Command contains blocked pattern: ${pattern}` };
+      return {
+        safe: false,
+        reason: `Command contains blocked pattern: ${pattern}`,
+      };
     }
   }
 
   // Extract the base command (first word)
   const baseCommand = command.trim().split(/\s+/)[0];
-  
+
   // Check if base command exists and is in allowed list
   if (!baseCommand || !ALLOWED_COMMANDS.includes(baseCommand)) {
-    return { safe: false, reason: `Command '${baseCommand || 'empty'}' is not in the allowed list` };
+    return {
+      safe: false,
+      reason: `Command '${baseCommand || 'empty'}' is not in the allowed list`,
+    };
   }
 
   return { safe: true };
@@ -108,7 +160,10 @@ function isSafeCommand(command: string): { safe: boolean; reason?: string } {
 
 // Tool execution functions
 const toolExecutors = {
-  async read_file(params: ToolParameters<'read_file'>, ctx: MockContext): Promise<string> {
+  async read_file(
+    params: ToolParameters<'read_file'>,
+    ctx: MockContext
+  ): Promise<string> {
     try {
       const { path } = params;
       const fullPath = join(ctx.workingDirectory, path);
@@ -122,7 +177,10 @@ const toolExecutors = {
     }
   },
 
-  async write_file(params: ToolParameters<'write_file'>, ctx: MockContext): Promise<string> {
+  async write_file(
+    params: ToolParameters<'write_file'>,
+    ctx: MockContext
+  ): Promise<string> {
     try {
       const { path, content } = params;
       const fullPath = join(ctx.workingDirectory, path);
@@ -138,18 +196,21 @@ const toolExecutors = {
     }
   },
 
-  async list_directory(params: ToolParameters<'list_directory'>, ctx: MockContext): Promise<string> {
+  async list_directory(
+    params: ToolParameters<'list_directory'>,
+    ctx: MockContext
+  ): Promise<string> {
     try {
       const { path } = params;
       const fullPath = join(ctx.workingDirectory, path);
       const files = await readdir(fullPath, { withFileTypes: true });
-      const fileList = files.map(file => ({
+      const fileList = files.map((file) => ({
         name: file.name,
-        type: file.isDirectory() ? 'directory' : 'file'
+        type: file.isDirectory() ? 'directory' : 'file',
       }));
 
       ctx.logger.info(`Listed directory: ${path}`);
-      return `Contents of ${path}:\n${fileList.map(f => `${f.type === 'directory' ? '📁' : '📄'} ${f.name}`).join('\n')}`;
+      return `Contents of ${path}:\n${fileList.map((f) => `${f.type === 'directory' ? '📁' : '📄'} ${f.name}`).join('\n')}`;
     } catch (error) {
       const { path } = params;
       ctx.logger.error(`Error listing directory ${path}:`, error);
@@ -157,7 +218,10 @@ const toolExecutors = {
     }
   },
 
-  async create_directory(params: ToolParameters<'create_directory'>, ctx: MockContext): Promise<string> {
+  async create_directory(
+    params: ToolParameters<'create_directory'>,
+    ctx: MockContext
+  ): Promise<string> {
     try {
       const { path } = params;
       const fullPath = join(ctx.workingDirectory, path);
@@ -171,17 +235,20 @@ const toolExecutors = {
     }
   },
 
-  async move_file(params: ToolParameters<'move_file'>, ctx: MockContext): Promise<string> {
+  async move_file(
+    params: ToolParameters<'move_file'>,
+    ctx: MockContext
+  ): Promise<string> {
     try {
       const { source, destination } = params;
-      
+
       // Ensure destination directory exists
       await mkdir(dirname(destination), { recursive: true });
-      
+
       // Use Node.js fs to move file (rename)
       const { rename } = await import('node:fs/promises');
       await rename(source, destination);
-      
+
       ctx.logger.info(`Moved file: ${source} → ${destination}`);
       return `Successfully moved ${source} to ${destination}`;
     } catch (error) {
@@ -191,18 +258,25 @@ const toolExecutors = {
     }
   },
 
-  async delete_file(params: ToolParameters<'delete_file'>, ctx: MockContext): Promise<string> {
+  async delete_file(
+    params: ToolParameters<'delete_file'>,
+    ctx: MockContext
+  ): Promise<string> {
     try {
       const { path, confirm = true } = params;
-      
+
       // Basic safety check - don't delete system files
-      if (path.startsWith('/') || path.includes('..') || path.startsWith('C:')) {
+      if (
+        path.startsWith('/') ||
+        path.includes('..') ||
+        path.startsWith('C:')
+      ) {
         return `❌ Cannot delete system path: ${path}`;
       }
-      
+
       const { unlink } = await import('node:fs/promises');
       await unlink(path);
-      
+
       ctx.logger.info(`Deleted file: ${path}`);
       return `Successfully deleted ${path}`;
     } catch (error) {
@@ -212,46 +286,57 @@ const toolExecutors = {
     }
   },
 
-  async grep_search(params: ToolParameters<'grep_search'>, ctx: MockContext): Promise<string> {
+  async grep_search(
+    params: ToolParameters<'grep_search'>,
+    ctx: MockContext
+  ): Promise<string> {
     try {
-      const { pattern, path = '.', filePattern, caseSensitive = false } = params;
-      
+      const {
+        pattern,
+        path = '.',
+        filePattern,
+        caseSensitive = false,
+      } = params;
+
       let command = `grep -r ${caseSensitive ? '' : '-i'} -n "${pattern}"`;
       if (filePattern) {
         command += ` --include="${filePattern}"`;
       }
       command += ` "${path}"`;
-      
+
       ctx.logger.info(`Searching for pattern: ${pattern}`);
-      
+
       const result = await execAsync(command, {
-        maxBuffer: 1024 * 1024 * 2 // 2MB buffer
+        maxBuffer: 1024 * 1024 * 2, // 2MB buffer
       });
-      
+
       if (!result.stdout.trim()) {
         return `🔍 No matches found for pattern: ${pattern}`;
       }
-      
+
       return `🔍 Search results for "${pattern}":\n\`\`\`\n${result.stdout}\n\`\`\``;
     } catch (error) {
       const { pattern } = params;
       ctx.logger.error(`Error searching for pattern ${pattern}:`, error);
-      
+
       if (error instanceof Error && 'code' in error) {
         const execError = error as { code: number };
         if (execError.code === 1) {
           return `🔍 No matches found for pattern: ${pattern}`;
         }
       }
-      
+
       return `Error searching for pattern ${pattern}: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   },
 
-  async find_files(params: ToolParameters<'find_files'>, ctx: MockContext): Promise<string> {
+  async find_files(
+    params: ToolParameters<'find_files'>,
+    ctx: MockContext
+  ): Promise<string> {
     try {
       const { pattern, path = '.', type = 'file' } = params;
-      
+
       let command = `find "${path}"`;
       if (type === 'file') {
         command += ' -type f';
@@ -259,19 +344,19 @@ const toolExecutors = {
         command += ' -type d';
       }
       command += ` -name "${pattern}"`;
-      
+
       ctx.logger.info(`Finding files with pattern: ${pattern}`);
-      
+
       const result = await execAsync(command, {
-        maxBuffer: 1024 * 1024 // 1MB buffer
+        maxBuffer: 1024 * 1024, // 1MB buffer
       });
-      
+
       if (!result.stdout.trim()) {
         return `📁 No files found matching pattern: ${pattern}`;
       }
-      
+
       const files = result.stdout.trim().split('\n');
-      return `📁 Found ${files.length} file(s) matching "${pattern}":\n${files.map(f => `• ${f}`).join('\n')}`;
+      return `📁 Found ${files.length} file(s) matching "${pattern}":\n${files.map((f) => `• ${f}`).join('\n')}`;
     } catch (error) {
       const { pattern } = params;
       ctx.logger.error(`Error finding files with pattern ${pattern}:`, error);
@@ -279,7 +364,10 @@ const toolExecutors = {
     }
   },
 
-  async execute_code(params: ToolParameters<'execute_code'>, ctx: MockContext): Promise<string> {
+  async execute_code(
+    params: ToolParameters<'execute_code'>,
+    ctx: MockContext
+  ): Promise<string> {
     try {
       const { language, code, input } = params;
       ctx.logger.info(`Executing ${language} code`);
@@ -288,9 +376,12 @@ const toolExecutors = {
       try {
         const riza = createRizaClient();
         const execParams = {
-          language: language.toUpperCase() as 'PYTHON' | 'JAVASCRIPT' | 'TYPESCRIPT',
+          language: language.toUpperCase() as
+            | 'PYTHON'
+            | 'JAVASCRIPT'
+            | 'TYPESCRIPT',
           code: code,
-          ...(input && { input: input })
+          ...(input && { input: input }),
         };
 
         const result = await riza.command.exec(execParams);
@@ -299,11 +390,16 @@ const toolExecutors = {
           `Code execution completed with exit code: ${result.exit_code}`,
           result.stdout && `stdout:\n${result.stdout}`,
           result.stderr && `stderr:\n${result.stderr}`,
-        ].filter(Boolean).join('\n\n');
+        ]
+          .filter(Boolean)
+          .join('\n\n');
 
         return output;
       } catch (rizaError) {
-        if (rizaError instanceof Error && rizaError.message.includes('RIZA_API_KEY')) {
+        if (
+          rizaError instanceof Error &&
+          rizaError.message.includes('RIZA_API_KEY')
+        ) {
           return `❌ Code execution unavailable: RIZA_API_KEY environment variable not set.\n\nTo enable code execution:\n1. Sign up at https://riza.io\n2. Get your API key\n3. Set RIZA_API_KEY environment variable`;
         }
         throw rizaError;
@@ -314,21 +410,29 @@ const toolExecutors = {
     }
   },
 
-  async run_command(params: ToolParameters<'run_command'>, ctx: MockContext): Promise<string> {
+  async run_command(
+    params: ToolParameters<'run_command'>,
+    ctx: MockContext
+  ): Promise<string> {
     try {
       const { command, workingDir = '.', timeout = 30000 } = params;
 
       // Safety check
       const safetyCheck = isSafeCommand(command);
       if (!safetyCheck.safe) {
-        ctx.logger.warn(`Blocked unsafe command: ${command} - ${safetyCheck.reason}`);
+        ctx.logger.warn(
+          `Blocked unsafe command: ${command} - ${safetyCheck.reason}`
+        );
         return `❌ Command blocked for safety: ${safetyCheck.reason}`;
       }
 
       ctx.logger.info(`Executing command: ${command} in ${workingDir}`);
 
       const result = await execAsync(command, {
-        cwd: workingDir === '.' ? ctx.workingDirectory : join(ctx.workingDirectory, workingDir),
+        cwd:
+          workingDir === '.'
+            ? ctx.workingDirectory
+            : join(ctx.workingDirectory, workingDir),
         timeout: timeout,
         maxBuffer: 1024 * 1024, // 1MB buffer
       });
@@ -337,37 +441,50 @@ const toolExecutors = {
         `✅ Command executed successfully: \`${command}\``,
         result.stdout && `📄 stdout:\n\`\`\`\n${result.stdout.trim()}\n\`\`\``,
         result.stderr && `⚠️ stderr:\n\`\`\`\n${result.stderr.trim()}\n\`\`\``,
-      ].filter(Boolean).join('\n\n');
+      ]
+        .filter(Boolean)
+        .join('\n\n');
 
       return output;
     } catch (error) {
       const { command } = params;
       ctx.logger.error(`Error executing command: ${command}`, error);
-      
+
       if (error instanceof Error) {
         // Handle different types of execution errors
         if ('code' in error) {
-          const execError = error as { code: number; stdout?: string; stderr?: string };
+          const execError = error as {
+            code: number;
+            stdout?: string;
+            stderr?: string;
+          };
           const parts = [
             `❌ Command failed with exit code ${execError.code}: \`${command}\``,
-            execError.stdout ? `📄 stdout:\n\`\`\`\n${execError.stdout.trim()}\n\`\`\`` : '',
-            execError.stderr ? `⚠️ stderr:\n\`\`\`\n${execError.stderr.trim()}\n\`\`\`` : ''
+            execError.stdout
+              ? `📄 stdout:\n\`\`\`\n${execError.stdout.trim()}\n\`\`\``
+              : '',
+            execError.stderr
+              ? `⚠️ stderr:\n\`\`\`\n${execError.stderr.trim()}\n\`\`\``
+              : '',
           ].filter(Boolean);
           return parts.join('\n\n');
         }
-        
+
         if (error.message.includes('timeout')) {
           return `⏱️ Command timed out: \`${command}\``;
         }
-        
+
         return `❌ Command execution error: ${error.message}`;
       }
-      
+
       return `❌ Unknown error executing command: \`${command}\``;
     }
   },
 
-  async diff_files(params: ToolParameters<'diff_files'>, ctx: MockContext): Promise<string> {
+  async diff_files(
+    params: ToolParameters<'diff_files'>,
+    ctx: MockContext
+  ): Promise<string> {
     try {
       const { file1, file2, useDelta = true, context = 3 } = params;
 
@@ -403,12 +520,12 @@ const toolExecutors = {
       // Use built-in diff
       const diff = diffLines(content1, content2);
       let diffOutput = `--- ${file1Name}\n+++ ${file2Name}\n`;
-      
+
       for (const part of diff) {
         const lines = part.value.split('\n');
         for (const line of lines) {
           if (line === '' && lines.indexOf(line) === lines.length - 1) continue; // Skip final empty line
-          
+
           if (part.added) {
             diffOutput += `+${line}\n`;
           } else if (part.removed) {
@@ -420,16 +537,23 @@ const toolExecutors = {
       }
 
       return `📄 Diff:\n\`\`\`diff\n${diffOutput}\n\`\`\``;
-
     } catch (error) {
       ctx.logger.error('Error generating diff:', error);
       return `❌ Error generating diff: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   },
 
-  async git_diff(params: ToolParameters<'git_diff'>, ctx: MockContext): Promise<string> {
+  async git_diff(
+    params: ToolParameters<'git_diff'>,
+    ctx: MockContext
+  ): Promise<string> {
     try {
-      const { files = [], staged = false, useDelta = true, saveToFile } = params;
+      const {
+        files = [],
+        staged = false,
+        useDelta = true,
+        saveToFile,
+      } = params;
 
       let command = 'git diff';
       if (staged) command += ' --cached';
@@ -442,11 +566,11 @@ const toolExecutors = {
         try {
           const result = await execAsync(command);
           if (!result.stdout.trim()) {
-            return staged 
+            return staged
               ? '✅ No staged changes to save'
               : '✅ No changes to save (working directory is clean)';
           }
-          
+
           await writeFile(saveToFile, result.stdout);
           return `💾 **Full diff saved to file:** \`${saveToFile}\`\n\n🔍 **View with:** \`less ${saveToFile}\` or open in your editor`;
         } catch (error) {
@@ -454,35 +578,37 @@ const toolExecutors = {
           return `❌ Error saving diff to file: ${error instanceof Error ? error.message : 'Unknown error'}`;
         }
       }
-      
+
       // Regular git diff
       const result = await execAsync(command, {
-        maxBuffer: 1024 * 1024 * 5 // 5MB buffer
+        maxBuffer: 1024 * 1024 * 5, // 5MB buffer
       });
 
       if (!result.stdout.trim()) {
-        return staged 
+        return staged
           ? '✅ No staged changes to show'
           : '✅ No changes to show (working directory is clean)';
       }
 
       return `📄 **Git Diff**:\n\n\`\`\`diff\n${result.stdout}\n\`\`\``;
-
     } catch (error) {
       ctx.logger.error('Error running git diff:', error);
-      
+
       if (error instanceof Error && 'code' in error) {
         const execError = error as { code: number };
         if (execError.code === 128) {
           return '❌ Not a git repository or git not available';
         }
       }
-      
+
       return `❌ Error running git diff: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   },
 
-  async set_work_context(params: ToolParameters<'set_work_context'>, ctx: MockContext): Promise<string> {
+  async set_work_context(
+    params: ToolParameters<'set_work_context'>,
+    ctx: MockContext
+  ): Promise<string> {
     try {
       const { goal, description, files = [], status = 'starting' } = params;
 
@@ -492,16 +618,20 @@ const toolExecutors = {
         files,
         status,
         timestamp: Date.now(),
-        sessionId: 'local_session'
+        sessionId: 'local_session',
       };
 
       // Save context to mock KV store
       const contextKey = 'work_context_current';
-      await ctx.kv.set('default', contextKey, JSON.stringify(workContext), { ttl: 3600 * 24 * 7 }); // 7 days
+      await ctx.kv.set('default', contextKey, JSON.stringify(workContext), {
+        ttl: 3600 * 24 * 7,
+      }); // 7 days
 
       // Also save to history
       const historyKey = `work_context_history_${Date.now()}`;
-      await ctx.kv.set('default', historyKey, JSON.stringify(workContext), { ttl: 3600 * 24 * 30 }); // 30 days
+      await ctx.kv.set('default', historyKey, JSON.stringify(workContext), {
+        ttl: 3600 * 24 * 30,
+      }); // 30 days
 
       ctx.logger.info(`Set work context: ${goal}`);
 
@@ -520,7 +650,10 @@ const toolExecutors = {
     }
   },
 
-  async get_work_context(params: ToolParameters<'get_work_context'>, ctx: MockContext): Promise<string> {
+  async get_work_context(
+    params: ToolParameters<'get_work_context'>,
+    ctx: MockContext
+  ): Promise<string> {
     try {
       const { includeHistory = false } = params;
 
@@ -543,8 +676,10 @@ const toolExecutors = {
 
       let response = `🎯 **Current Work Context**\n\n`;
       response += `**Goal:** ${currentContext.goal}\n`;
-      if (currentContext.description) response += `**Description:** ${currentContext.description}\n`;
-      if (currentContext.files && currentContext.files.length > 0) response += `**Key Files:** ${currentContext.files.join(', ')}\n`;
+      if (currentContext.description)
+        response += `**Description:** ${currentContext.description}\n`;
+      if (currentContext.files && currentContext.files.length > 0)
+        response += `**Key Files:** ${currentContext.files.join(', ')}\n`;
       response += `**Status:** ${currentContext.status}\n`;
       response += `**Started:** ${new Date(currentContext.timestamp).toLocaleString()}\n`;
 
@@ -562,6 +697,49 @@ const toolExecutors = {
       return `❌ Error getting work context: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   },
+
+  async project_context(
+    params: ToolParameters<'project_context'>,
+    ctx: MockContext
+  ): Promise<string> {
+    try {
+      const { action, goal } = params;
+
+      // Import the handler dynamically to avoid circular dependencies
+      const { projectContextHandler } = await import(
+        '../src/tools/project-context.js'
+      );
+      const result = await projectContextHandler({ action, goal });
+
+      if (!result.success) {
+        return `❌ ${result.message}`;
+      }
+
+      switch (action) {
+        case 'analyze':
+          return `📊 **Project Analysis**\n\n${result.message}\n\nType: ${result.projectInfo?.type}\nFramework: ${result.projectInfo?.framework || 'none'}\nPackage Manager: ${result.projectInfo?.packageManager || 'none'}`;
+
+        case 'get-commands':
+          const commands = result.commands || [];
+          if (commands.length === 0) {
+            return `📝 No suggested commands found for this project.`;
+          }
+          return `📝 **Suggested Commands**\n\n${commands.map((cmd: string) => `• ${cmd}`).join('\n')}`;
+
+        case 'get-config':
+          return `⚙️ **Project Configuration**\n\n${JSON.stringify(result.config, null, 2)}`;
+
+        case 'update-goal':
+          return `✅ ${result.message}\n\nTotal goals: ${result.totalGoals}`;
+
+        default:
+          return result.message || 'Operation completed';
+      }
+    } catch (error) {
+      ctx.logger.error('Error with project context:', error);
+      return `❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  },
 };
 
 // Main tool proxy class
@@ -573,11 +751,14 @@ export class ToolProxy {
 
   constructor(logger?: Logger, workingDirectory?: string) {
     this.logger = logger || {
-      info: (msg: string, ...args: unknown[]) => console.log(`[INFO] ${msg}`, ...args),
-      error: (msg: string, ...args: unknown[]) => console.error(`[ERROR] ${msg}`, ...args),
-      warn: (msg: string, ...args: unknown[]) => console.warn(`[WARN] ${msg}`, ...args),
+      info: (msg: string, ...args: unknown[]) =>
+        console.log(`[INFO] ${msg}`, ...args),
+      error: (msg: string, ...args: unknown[]) =>
+        console.error(`[ERROR] ${msg}`, ...args),
+      warn: (msg: string, ...args: unknown[]) =>
+        console.warn(`[WARN] ${msg}`, ...args),
     };
-    
+
     this.workingDirectory = workingDirectory || process.cwd();
     this.kv = new MockKV();
     this.ctx = {
@@ -590,9 +771,9 @@ export class ToolProxy {
   async executeToolCall(toolCall: ToolCall): Promise<ToolResult> {
     try {
       const { id, toolName, parameters } = toolCall;
-      
+
       this.logger.info(`Executing tool: ${toolName} with ID: ${id}`);
-      
+
       if (!(toolName in toolExecutors)) {
         throw new Error(`Unknown tool: ${toolName}`);
       }
@@ -606,7 +787,10 @@ export class ToolProxy {
         result,
       };
     } catch (error) {
-      this.logger.error(`Tool execution failed for ${toolCall.toolName}:`, error);
+      this.logger.error(
+        `Tool execution failed for ${toolCall.toolName}:`,
+        error
+      );
       return {
         id: toolCall.id,
         success: false,
@@ -617,12 +801,12 @@ export class ToolProxy {
 
   async executeMultipleToolCalls(toolCalls: ToolCall[]): Promise<ToolResult[]> {
     const results: ToolResult[] = [];
-    
+
     for (const toolCall of toolCalls) {
       const result = await this.executeToolCall(toolCall);
       results.push(result);
     }
-    
+
     return results;
   }
 }
