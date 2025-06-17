@@ -1,59 +1,61 @@
 {
-  "name": "CodingAgent",
-  "version": "0.0.1",
-  "description": "AI coding assistant with hybrid cloud-local architecture. Agent runs in cloud, tools execute locally.",
-  "main": "index.js",
-  "type": "module",
-  "scripts": {
-    "build": "agentuity build",
-    "dev": "agentuity dev",
-    "format": "biome format --write .",
-    "lint": "biome lint .",
-    "start": "agentuity bundle && bun run .agentuity/index.js",
-    "setup": "bun run cli/setup-command.ts",
-    "cli": "bun run cli.js",
-    "show-urls": "bun run scripts/show-agent-urls.js",
-    "test-config": "bun run scripts/test-dynamic-config.js",
-    "test-install": "bun run scripts/test-global-install.js"
-  },
-  "bin": {
-    "coder": "./cli.js"
-  },
-  "keywords": [
-    "agentuity",
-    "ai-agent",
-    "coding-assistant",
-    "claude",
-    "typescript",
-    "cli-tool"
-  ],
-  "private": true,
-  "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
-    "@types/bun": "^1.2.16",
-    "@types/figlet": "^1.7.0",
-    "@types/inquirer": "^9.0.8"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
-  "dependencies": {
-    "@agentuity/sdk": "^0.0.124",
-    "@ai-sdk/anthropic": "^1.2.12",
-    "@riza-io/api": "^0.3.0",
-    "ai": "^4.3.16",
-    "boxen": "^8.0.1",
-    "chalk": "^5.4.1",
-    "commander": "^14.0.0",
-    "diff": "^8.0.2",
-    "dotenv": "^16.5.0",
-    "figlet": "^1.8.1",
-    "inquirer": "^12.6.3",
-    "marked": "^15.0.12",
-    "marked-terminal": "^7.3.0",
-    "ora": "^8.2.0",
-    "yaml": "^2.8.0",
-    "zod": "^3.22.4"
-  },
-  "module": "index.ts"
+	"name": "CodingAgent",
+	"version": "0.0.1",
+	"description": "AI coding assistant with hybrid cloud-local architecture. Agent runs in cloud, tools execute locally.",
+	"main": "index.js",
+	"type": "module",
+	"scripts": {
+		"build": "agentuity build",
+		"dev": "agentuity dev",
+		"format": "biome format --write .",
+		"lint": "biome lint .",
+		"start": "agentuity bundle && bun run .agentuity/index.js",
+		"setup": "bun run cli/setup-command.ts",
+		"cli": "bun run cli.js",
+		"show-urls": "bun run scripts/show-agent-urls.js",
+		"test-config": "bun run scripts/test-dynamic-config.js",
+		"test-install": "bun run scripts/test-global-install.js"
+	},
+	"bin": {
+		"coder": "./cli.js"
+	},
+	"keywords": [
+		"agentuity",
+		"ai-agent",
+		"coding-assistant",
+		"claude",
+		"typescript",
+		"cli-tool"
+	],
+	"private": true,
+	"devDependencies": {
+		"@biomejs/biome": "^1.9.4",
+		"@types/bun": "^1.2.16",
+		"@types/cli-progress": "^3.11.6",
+		"@types/figlet": "^1.7.0",
+		"@types/inquirer": "^9.0.8"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"dependencies": {
+		"@agentuity/sdk": "^0.0.126",
+		"@ai-sdk/anthropic": "^1.2.12",
+		"@riza-io/api": "^0.3.0",
+		"ai": "^4.3.16",
+		"boxen": "^8.0.1",
+		"chalk": "^5.4.1",
+		"cli-progress": "^3.12.0",
+		"commander": "^14.0.0",
+		"diff": "^8.0.2",
+		"dotenv": "^16.5.0",
+		"figlet": "^1.8.1",
+		"inquirer": "^12.6.3",
+		"marked": "^15.0.12",
+		"marked-terminal": "^7.3.0",
+		"ora": "^8.2.0",
+		"yaml": "^2.8.0",
+		"zod": "^3.22.4"
+	},
+	"module": "index.ts"
 }

@@ -51,3 +51,6 @@ test-*.js
 *.tmp
 *.temp
 changes_*.patch
+
+# Coding Agent
+.coder/

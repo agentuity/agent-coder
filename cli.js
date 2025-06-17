@@ -9,16 +9,21 @@ import boxen from 'boxen';
 import dotenv from 'dotenv';
 import { readFile, writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
+import { homedir } from 'node:os';
 import { ContinuationHandler } from './cli/continuation-handler.js';
 import { marked } from 'marked';
 import TerminalRenderer from 'marked-terminal';
+// We'll use dynamic imports to avoid build system issues
+// import { SetupManager } from './src/lib/setup-manager.ts';
+// import { SessionManager } from './src/lib/session-manager.ts';
 
 // Load environment variables
 dotenv.config();
 
 // Capture the actual terminal working directory before anything else happens
 // This is needed because the shell script changes to its own directory
-const ACTUAL_TERMINAL_CWD = process.env.ORIGINAL_TERMINAL_CWD || process.env.PWD || process.cwd();
+const ACTUAL_TERMINAL_CWD =
+  process.env.ORIGINAL_TERMINAL_CWD || process.env.PWD || process.cwd();
 
 // Configure markdown rendering for terminal
 marked.setOptions({
@@ -30,14 +35,15 @@ marked.setOptions({
     strong: chalk.bold,
     em: chalk.italic,
     codespan: chalk.bgBlack.white,
-  })
+  }),
 });
 
 // Enhanced text processing function
 function processResponseText(text) {
   // Check if text contains markdown-like content
-  const hasMarkdown = /^#{1,6}\s|```|\*\*|\*[^*]|\[.*\]\(.*\)|^\s*[\*\-\+]\s/m.test(text);
-  
+  const hasMarkdown =
+    /^#{1,6}\s|```|\*\*|\*[^*]|\[.*\]\(.*\)|^\s*[\*\-\+]\s/m.test(text);
+
   if (hasMarkdown) {
     try {
       return marked(text);
@@ -46,7 +52,7 @@ function processResponseText(text) {
       return text;
     }
   }
-  
+
   return text;
 }
 
@@ -64,7 +70,10 @@ function processStreamingLine(line) {
     .replace(/__TOOL_CALLS_HIDDEN__.*?__END_CALLS_HIDDEN__/gs, '');
 
   // Filter out hidden tool call lines completely
-  if (/__TOOL_CALLS_HIDDEN__/.test(processedLine) || /__END_CALLS_HIDDEN__/.test(processedLine)) {
+  if (
+    /__TOOL_CALLS_HIDDEN__/.test(processedLine) ||
+    /__END_CALLS_HIDDEN__/.test(processedLine)
+  ) {
     return '';
   }
 
@@ -73,12 +82,12 @@ function processStreamingLine(line) {
   if (/^📋 Parameters:\s*\{/.test(processedLine.trim())) {
     return ''; // Filter out parameter start lines
   }
-  
+
   // Filter out lines that look like JSON parameter content (conservative approach)
   if (/^\s*["'][a-zA-Z_]+["']:\s*["\{]/.test(processedLine.trim())) {
     return ''; // Filter out obvious JSON parameter lines
   }
-  
+
   // Filter out closing parameter braces
   if (/^\s*\}\s*$/.test(processedLine.trim())) {
     return ''; // Filter out standalone closing braces
@@ -96,13 +105,16 @@ function processStreamingLine(line) {
       processedLine = marked(processedLine);
     } catch (error) {
       // Fallback to manual header formatting
-      processedLine = processedLine.replace(/^(#{1,6})\s+(.+)$/g, (match, hashes, text) => {
-        const level = hashes.length;
-        if (level === 1) return `${chalk.bold.blue(text)}\n`;
-        if (level === 2) return `${chalk.bold.cyan(text)}\n`;
-        if (level === 3) return `${chalk.bold.yellow(text)}\n`;
-        return `${chalk.bold(text)}\n`;
-      });
+      processedLine = processedLine.replace(
+        /^(#{1,6})\s+(.+)$/g,
+        (match, hashes, text) => {
+          const level = hashes.length;
+          if (level === 1) return `${chalk.bold.blue(text)}\n`;
+          if (level === 2) return `${chalk.bold.cyan(text)}\n`;
+          if (level === 3) return `${chalk.bold.yellow(text)}\n`;
+          return `${chalk.bold(text)}\n`;
+        }
+      );
     }
   } else {
     // Manual formatting for other elements to preserve list numbering
@@ -110,13 +122,16 @@ function processStreamingLine(line) {
       // Bold text
       .replace(/\*\*(.*?)\*\*/g, chalk.bold('$1'))
       .replace(/__(.*?)__/g, chalk.bold('$1'))
-      // Italic text  
+      // Italic text
       .replace(/\*(.*?)\*/g, chalk.italic('$1'))
       .replace(/_(.*?)_/g, chalk.italic('$1'))
       // Inline code
       .replace(/`(.*?)`/g, chalk.bgBlack.white(' $1 '))
       // Links (basic formatting)
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, `${chalk.cyan.underline('$1')}${chalk.dim(' ($2)')}`);
+      .replace(
+        /\[([^\]]+)\]\(([^)]+)\)/g,
+        `${chalk.cyan.underline('$1')}${chalk.dim(' ($2)')}`
+      );
   }
 
   // Apply enhanced formatting for tool execution messages
@@ -148,19 +163,26 @@ async function getAgentUrl(mode = 'auto') {
     return process.env.AGENT_URL;
   }
 
-  // Try to read from config file only for cloud mode (not auto mode)
-  if (mode === 'cloud') {
+  // Try to read from global config file for cloud mode or auto mode
+  if (mode === 'cloud' || mode === 'auto') {
     try {
+      const globalConfigPath = join(homedir(), '.config', 'agentuity-coder', 'agentuity-coder.config.json');
       const configContent = await readFile(
-        'agentuity-coder.config.json',
+        globalConfigPath,
         'utf-8'
       );
       const config = JSON.parse(configContent);
+      
+      // Store the API key globally for this session if found
+      if (config.apiKey && !process.env.API_KEY) {
+        process.env.GLOBAL_API_KEY = config.apiKey;
+      }
+      
       if (config.agentUrl) {
         return config.agentUrl;
       }
     } catch (error) {
-      // Config file doesn't exist or invalid, continue to dynamic detection
+      // Global config file doesn't exist or invalid, continue to dynamic detection
     }
   }
 
@@ -168,7 +190,6 @@ async function getAgentUrl(mode = 'auto') {
   try {
     const { generateAgentUrl } = await import('./cli/config-utils.js');
     const url = await generateAgentUrl(mode === 'auto' ? 'local' : mode);
-    // Uncomment for debugging: console.log(`Using dynamically detected URL: ${url}`);
     return url;
   } catch (error) {
     console.warn('Could not detect agent configuration. Using fallback.');
@@ -178,14 +199,16 @@ async function getAgentUrl(mode = 'auto') {
       case 'local':
         return `http://127.0.0.1:3500/${fallbackId}`;
       case 'cloud':
-        return `https://your-deployment.agentuity.cloud/${fallbackId}`;
+        // Remove 'agent_' prefix for cloud endpoints
+        const cloudId = fallbackId.replace('agent_', '');
+        return `https://agentuity.ai/api/${cloudId}`;
       default:
         return `http://127.0.0.1:3500/${fallbackId}`;
     }
   }
 }
 
-const API_KEY = process.env.API_KEY;
+const API_KEY = process.env.API_KEY || process.env.AGENTUITY_PROJECT_KEY || process.env.GLOBAL_API_KEY;
 
 if (!API_KEY) {
   console.error(
@@ -208,17 +231,26 @@ const slashCommands = [
   { name: '/help', description: 'Show available commands' },
   { name: '/clear', description: 'Clear screen and show header' },
   { name: '/session', description: 'Start a new session' },
+  { name: '/continue', description: 'Continue from last session' },
   { name: '/context', description: 'Show current work context' },
+  { name: '/goal', description: 'Set or update current goal' },
   { name: '/diff', description: 'Show git diff with beautiful formatting' },
   {
     name: '/diff-save',
     description: 'Save full diff to file for large changes',
   },
+  { name: '/undo', description: 'Undo recent changes made by the agent' },
+  { name: '/changes', description: 'Show recent changes made by the agent' },
   { name: '/quit', description: 'Exit the CLI' },
 ];
 
 // Smart input handler with command hints
-async function getInput() {
+async function getInput(setupManager) {
+  // Get suggested commands from project config
+  const suggestedCommands = setupManager
+    ? await setupManager.getSuggestedCommands()
+    : [];
+
   // Show available slash commands hint
   const commandHint = chalk.dim(
     '\n💡 Type "/" for commands: /help /clear /session /context /diff /diff-save /quit\n'
@@ -242,8 +274,35 @@ async function getInput() {
         }
         return input;
       },
+      // Add autocomplete suggestions
+      suggest: async (input) => {
+        const suggestions = [];
+
+        // Add slash commands
+        if (input.startsWith('/')) {
+          const slashSuggestions = slashCommands
+            .filter((cmd) => cmd.name.startsWith(input))
+            .map((cmd) => ({ name: cmd.name, value: cmd.name }));
+          suggestions.push(...slashSuggestions);
+        }
+
+        // Add project commands
+        if (suggestedCommands.length > 0 && !input.startsWith('/')) {
+          const projectSuggestions = suggestedCommands
+            .filter((cmd) => cmd.includes(input))
+            .map((cmd) => ({ name: cmd, value: cmd }));
+          suggestions.push(...projectSuggestions);
+        }
+
+        return suggestions;
+      },
     },
   ]);
+
+  // Now safe to track command history in global config directory
+  if (setupManager && message && !message.startsWith('/')) {
+    await setupManager.addRecentCommand(message);
+  }
 
   return message;
 }
@@ -263,23 +322,36 @@ function showHeader() {
 }
 
 // Send message to agent with beautiful streaming and tool call handling
-async function sendMessage(message, showSpinner = true, agentMode = 'auto') {
+async function sendMessage(
+  message,
+  showSpinner = true,
+  agentMode = 'auto',
+  sessionManager = null,
+  progressManager = null
+) {
   let spinner;
 
   if (showSpinner) {
-    spinner = ora({
-      text: chalk.blue('🤖 Agent is thinking...'),
-      spinner: 'dots',
-    }).start();
+    if (progressManager) {
+      progressManager.start({
+        type: 'spinner',
+        message: chalk.blue('🤖 Agent is thinking...')
+      });
+    } else {
+      spinner = ora({
+        text: chalk.blue('🤖 Agent is thinking...'),
+        spinner: 'dots',
+      }).start();
+    }
   }
 
   try {
     const targetUrl = await getAgentUrl(agentMode);
-    
+
     // Add timeout to prevent hanging
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout for initial request
-    
+
     const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
@@ -294,15 +366,31 @@ async function sendMessage(message, showSpinner = true, agentMode = 'auto') {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Could not read error response');
+      const errorText = await response
+        .text()
+        .catch(() => 'Could not read error response');
       if (response.status === 429) {
-        console.error(chalk.yellow('⚠️  Rate limit exceeded. Please wait before trying again.'));
-        console.error(chalk.yellow('💡 Try shorter requests or wait for rate limits to reset.'));
+        console.error(
+          chalk.yellow(
+            '⚠️  Rate limit exceeded. Please wait before trying again.'
+          )
+        );
+        console.error(
+          chalk.yellow(
+            '💡 Try shorter requests or wait for rate limits to reset.'
+          )
+        );
       }
-      throw new Error(`HTTP ${response.status}: ${response.statusText}\n${errorText}`);
+      throw new Error(
+        `HTTP ${response.status}: ${response.statusText}\n${errorText}`
+      );
     }
 
-    if (spinner) spinner.stop();
+    if (progressManager) {
+      progressManager.stop();
+    } else if (spinner) {
+      spinner.stop();
+    }
 
     console.log(chalk.green('\n🤖 Agent:'));
     console.log(chalk.dim('─'.repeat(60)));
@@ -392,12 +480,31 @@ async function sendMessage(message, showSpinner = true, agentMode = 'auto') {
 
     // biome-ignore lint/style/useTemplate: <explanation>
     console.log('\n' + chalk.dim('─'.repeat(60)));
+
+    // Now safe to track sessions in global config directory
+    if (sessionManager && fullResponse) {
+      // Clean the response to remove tool call markers
+      const cleanResponse = fullResponse
+        .replace(/__TOOL_CALLS_HIDDEN__.*?__END_CALLS_HIDDEN__/gs, '')
+        .trim();
+      if (cleanResponse) {
+        await sessionManager.addMessage('assistant', cleanResponse);
+      }
+    }
   } catch (error) {
-    if (spinner) spinner.fail(chalk.red('Failed to communicate with agent'));
-    
+    if (progressManager) {
+      progressManager.fail(chalk.red('Failed to communicate with agent'));
+    } else if (spinner) {
+      spinner.fail(chalk.red('Failed to communicate with agent'));
+    }
+
     if (error instanceof Error && error.name === 'AbortError') {
-      console.error(chalk.red('❌ Request timed out. The agent may be overloaded.'));
-      console.error(chalk.yellow('💡 Try again with a shorter request or wait a moment.'));
+      console.error(
+        chalk.red('❌ Request timed out. The agent may be overloaded.')
+      );
+      console.error(
+        chalk.yellow('💡 Try again with a shorter request or wait a moment.')
+      );
     } else if (error instanceof Error) {
       console.error(chalk.red(`❌ Error: ${error.message}`));
     } else {
@@ -410,6 +517,47 @@ async function sendMessage(message, showSpinner = true, agentMode = 'auto') {
 async function interactiveMode(agentMode = 'auto') {
   showHeader();
 
+  // Initialize setup manager for first-time experience
+  // Use dynamic imports to avoid build system issues
+  let setupManager = null;
+  let sessionManager = null;
+  let progressManager = null;
+  let undoManager = null;
+  
+  try {
+    const { SetupManager } = await import('./src/lib/setup-manager.ts');
+    const { SessionManager } = await import('./src/lib/session-manager.ts');
+    const { progressManager: pm } = await import('./src/lib/progress-manager.ts');
+    const { UndoManager } = await import('./src/lib/undo-manager.ts');
+    
+    progressManager = pm;
+    
+    // Show progress for initialization
+    progressManager.createSteps([
+      'Initializing setup manager',
+      'Loading project configuration',
+      'Setting up session manager'
+    ]);
+    
+    setupManager = new SetupManager(ACTUAL_TERMINAL_CWD);
+    progressManager.nextStep();
+    
+    await setupManager.initialize();
+    progressManager.nextStep();
+    
+    sessionManager = new SessionManager(ACTUAL_TERMINAL_CWD);
+    await sessionManager.initialize();
+    progressManager.nextStep();
+    
+    // Initialize undo manager with session ID
+    undoManager = new UndoManager(sessionId);
+    await undoManager.initialize();
+  } catch (error) {
+    if (progressManager) progressManager.stop();
+    console.warn(chalk.yellow('⚠️  Enhanced features unavailable:', error.message));
+    // Continue without enhanced features
+  }
+
   console.log(
     boxen(
       `${chalk.green('🚀 Interactive Mode')}\n\n` +
@@ -420,6 +568,8 @@ async function interactiveMode(agentMode = 'auto') {
         `  ${chalk.white('/context')}   - Show work context\n` +
         `  ${chalk.white('/diff')}     - Show git diff\n` +
         `  ${chalk.white('/diff-save')} - Save full diff to file\n` +
+        `  ${chalk.white('/undo')}     - Undo recent changes\n` +
+        `  ${chalk.white('/changes')}  - Show recent changes\n` +
         `  ${chalk.white('/quit')}     - Exit\n\n` +
         `${chalk.yellow('💡 Tip:')} Just type your coding questions naturally!`,
       {
@@ -437,7 +587,7 @@ async function interactiveMode(agentMode = 'auto') {
   while (true) {
     console.log(); // Empty line for spacing
 
-    const message = await getInput();
+    const message = await getInput(setupManager);
 
     if (!message.trim()) continue;
 
@@ -464,9 +614,13 @@ async function interactiveMode(agentMode = 'auto') {
               `${chalk.white('/help')}     - Show this help\n` +
               `${chalk.white('/clear')}    - Clear screen and show header\n` +
               `${chalk.white('/session')}  - Start a new session\n` +
+              `${chalk.white('/continue')} - Continue from last session\n` +
               `${chalk.white('/context')}   - Show current work context and goals\n` +
+              `${chalk.white('/goal')}     - Set or update current goal\n` +
               `${chalk.white('/diff')}     - Show git diff with beautiful formatting\n` +
               `${chalk.white('/diff-save')} - Save full diff to file for large changes\n` +
+              `${chalk.white('/undo')}     - Undo recent changes made by the agent\n` +
+              `${chalk.white('/changes')}  - Show recent changes made by the agent\n` +
               `${chalk.white('/quit')}     - Exit the CLI\n\n` +
               `${chalk.cyan('Examples:')}\n` +
               `• "What does package.json contain?"\n` +
@@ -484,22 +638,54 @@ async function interactiveMode(agentMode = 'auto') {
 
       case '/session':
         sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        if (sessionManager) {
+          await sessionManager.startNewSession();
+        }
         console.log(chalk.green('✨ New session started!'));
         continue;
 
+      case '/continue':
+        if (sessionManager) {
+          const continueMsg = await sessionManager.continueLastSession();
+          console.log(processResponseText(continueMsg));
+        } else {
+          console.log(chalk.yellow('Session features not available'));
+        }
+        continue;
+
       case '/context':
-        await sendMessage(
-          'What are we currently working on? Show me the work context.',
-          true,
-          agentMode
-        );
+        if (sessionManager) {
+          const summary = await sessionManager.getSummary();
+          console.log(processResponseText(summary));
+        } else {
+          console.log(chalk.yellow('Session features not available'));
+        }
+        continue;
+
+      case '/goal':
+        const { goal } = await inquirer.prompt([
+          {
+            type: 'input',
+            name: 'goal',
+            message: chalk.blue('What are you working on?'),
+            prefix: '🎯',
+          },
+        ]);
+        if (goal && goal.trim()) {
+          if (sessionManager) {
+            await sessionManager.updateGoal(goal.trim());
+          }
+          console.log(chalk.green(`✅ Goal set: ${goal.trim()}`));
+        }
         continue;
 
       case '/diff':
         await sendMessage(
           'Show me the git diff of all changed files with beautiful formatting.',
           true,
-          agentMode
+          agentMode,
+          sessionManager,
+          progressManager
         );
         continue;
 
@@ -512,6 +698,22 @@ async function interactiveMode(agentMode = 'auto') {
         );
         continue;
       }
+      
+      case '/undo':
+        if (undoManager) {
+          await undoManager.interactiveUndo();
+        } else {
+          console.log(chalk.yellow('Undo feature not available'));
+        }
+        continue;
+        
+      case '/changes':
+        if (undoManager) {
+          await undoManager.showRecentChanges();
+        } else {
+          console.log(chalk.yellow('Change tracking not available'));
+        }
+        continue;
 
       case '/quit':
       case '/exit':
@@ -519,7 +721,12 @@ async function interactiveMode(agentMode = 'auto') {
         process.exit(0);
     }
 
-    await sendMessage(message, true, agentMode);
+    // Now safe to track sessions in global config directory
+    if (sessionManager) {
+      await sessionManager.addMessage('user', message);
+    }
+
+    await sendMessage(message, true, agentMode, sessionManager, progressManager);
   }
 }
 

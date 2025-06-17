@@ -26,27 +26,34 @@ interface AgentuityAgentList {
 }
 
 // Get agent configurations using Agentuity CLI
-export async function getAgentConfigs(): Promise<{ cloudCoder: AgentConfig; port: number }> {
+export async function getAgentConfigs(): Promise<{
+  cloudCoder: AgentConfig;
+  port: number;
+}> {
   try {
     // Use official Agentuity CLI to get agent list
     const { stdout } = await execAsync('agentuity agent list --format json');
     const agentList: AgentuityAgentList = JSON.parse(stdout);
-    
+
     // Find CloudCoder agent (now the only agent)
-    const cloudCoderKey = Object.keys(agentList).find(key => 
-      agentList[key]?.agent?.name?.toLowerCase() === 'cloudcoder'
+    const cloudCoderKey = Object.keys(agentList).find(
+      (key) => agentList[key]?.agent?.name?.toLowerCase() === 'cloudcoder'
     );
-    
+
     if (!cloudCoderKey) {
-      throw new Error('CloudCoder agent not found. Run "agentuity agent list" to see available agents.');
+      throw new Error(
+        'CloudCoder agent not found. Run "agentuity agent list" to see available agents.'
+      );
     }
-    
+
     const cloudCoder = agentList[cloudCoderKey]?.agent;
-    
+
     if (!cloudCoder) {
-      throw new Error('Could not load agent details. Please check agent configuration.');
+      throw new Error(
+        'Could not load agent details. Please check agent configuration.'
+      );
     }
-    
+
     // Get port from agentuity.yaml if available
     let port = 3500;
     try {
@@ -56,34 +63,45 @@ export async function getAgentConfigs(): Promise<{ cloudCoder: AgentConfig; port
     } catch {
       // Use default port if YAML not readable
     }
-    
-    return { 
+
+    return {
       cloudCoder: { id: cloudCoder.id, name: cloudCoder.name },
-      port 
+      port,
     };
   } catch (error) {
     // Fallback to CLI check if JSON parsing failed
     if (error instanceof Error && error.message.includes('JSON')) {
-      console.warn('Could not parse agentuity agent list. Falling back to defaults.');
+      console.warn(
+        'Could not parse agentuity agent list. Falling back to defaults.'
+      );
     } else {
-      console.warn('Agentuity CLI not available or no agents found. Using fallback values.');
+      console.warn(
+        'Agentuity CLI not available or no agents found. Using fallback values.'
+      );
     }
-    
+
     return {
-      cloudCoder: { id: 'agent_3918f7879297cf4159ea3d23b54f835b', name: 'CloudCoder' },
-      port: 3500
+      cloudCoder: {
+        id: 'agent_3918f7879297cf4159ea3d23b54f835b',
+        name: 'CloudCoder',
+      },
+      port: 3500,
     };
   }
 }
 
 // Generate agent URL based on mode and configuration
-export async function generateAgentUrl(mode: 'local' | 'cloud'): Promise<string> {
+export async function generateAgentUrl(
+  mode: 'local' | 'cloud'
+): Promise<string> {
   const { cloudCoder, port } = await getAgentConfigs();
-  
+
   if (mode === 'local') {
     return `http://127.0.0.1:${port}/${cloudCoder.id}`;
   }
-  
+
   // For cloud mode, use the actual Agentuity cloud URL
-  return `https://agentuity.ai/api/${cloudCoder.id}`;
+  // Remove 'agent_' prefix from the ID for cloud endpoints
+  const cloudId = cloudCoder.id.replace('agent_', '');
+  return `https://agentuity.ai/api/${cloudId}`;
 }
