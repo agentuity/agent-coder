@@ -80,7 +80,6 @@ sequenceDiagram
 - 🔒 **No file access by cloud** - Files never leave your machine
 - 🛡️ **Sandboxed execution** - Code runs in isolated environments (Riza.io)
 - ✅ **Command whitelisting** - Only safe shell commands allowed
-- 🔑 **Local secrets** - API keys and sensitive data stay local
 
 #### Technical Components
 

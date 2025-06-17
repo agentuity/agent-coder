@@ -101,5 +101,7 @@ export async function generateAgentUrl(
   }
 
   // For cloud mode, use the actual Agentuity cloud URL
-  return `https://agentuity.ai/api/${cloudCoder.id}`;
+  // Remove 'agent_' prefix from the ID for cloud endpoints
+  const cloudId = cloudCoder.id.replace('agent_', '');
+  return `https://agentuity.ai/api/${cloudId}`;
 }

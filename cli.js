@@ -9,6 +9,7 @@ import boxen from 'boxen';
 import dotenv from 'dotenv';
 import { readFile, writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
+import { homedir } from 'node:os';
 import { ContinuationHandler } from './cli/continuation-handler.js';
 import { marked } from 'marked';
 import TerminalRenderer from 'marked-terminal';
@@ -162,19 +163,26 @@ async function getAgentUrl(mode = 'auto') {
     return process.env.AGENT_URL;
   }
 
-  // Try to read from config file only for cloud mode (not auto mode)
-  if (mode === 'cloud') {
+  // Try to read from global config file for cloud mode or auto mode
+  if (mode === 'cloud' || mode === 'auto') {
     try {
+      const globalConfigPath = join(homedir(), '.config', 'agentuity-coder', 'agentuity-coder.config.json');
       const configContent = await readFile(
-        'agentuity-coder.config.json',
+        globalConfigPath,
         'utf-8'
       );
       const config = JSON.parse(configContent);
+      
+      // Store the API key globally for this session if found
+      if (config.apiKey && !process.env.API_KEY) {
+        process.env.GLOBAL_API_KEY = config.apiKey;
+      }
+      
       if (config.agentUrl) {
         return config.agentUrl;
       }
     } catch (error) {
-      // Config file doesn't exist or invalid, continue to dynamic detection
+      // Global config file doesn't exist or invalid, continue to dynamic detection
     }
   }
 
@@ -182,7 +190,6 @@ async function getAgentUrl(mode = 'auto') {
   try {
     const { generateAgentUrl } = await import('./cli/config-utils.js');
     const url = await generateAgentUrl(mode === 'auto' ? 'local' : mode);
-    // Uncomment for debugging: console.log(`Using dynamically detected URL: ${url}`);
     return url;
   } catch (error) {
     console.warn('Could not detect agent configuration. Using fallback.');
@@ -192,14 +199,16 @@ async function getAgentUrl(mode = 'auto') {
       case 'local':
         return `http://127.0.0.1:3500/${fallbackId}`;
       case 'cloud':
-        return `https://your-deployment.agentuity.cloud/${fallbackId}`;
+        // Remove 'agent_' prefix for cloud endpoints
+        const cloudId = fallbackId.replace('agent_', '');
+        return `https://agentuity.ai/api/${cloudId}`;
       default:
         return `http://127.0.0.1:3500/${fallbackId}`;
     }
   }
 }
 
-const API_KEY = process.env.API_KEY || process.env.AGENTUITY_PROJECT_KEY;
+const API_KEY = process.env.API_KEY || process.env.AGENTUITY_PROJECT_KEY || process.env.GLOBAL_API_KEY;
 
 if (!API_KEY) {
   console.error(
