@@ -11,6 +11,9 @@
 <br />
 </div>
 
+[![Watch the video](https://img.youtube.com/vi/9OP6PhAhifQ/maxresdefault.jpg)](https://youtu.be/9OP6PhAhifQ)
+
+
 A powerful AI coding assistant built with Agentuity that provides autonomous coding help with real-time tool execution. Features a hybrid cloud-local architecture where the AI runs in the cloud but all tool execution happens securely on your local machine.
 
 ## ✨ Features
@@ -403,4 +406,3 @@ const response = await fetch('http://127.0.0.1:3500/agent_xxx', {
 ---
 
 **Built with ❤️ using [Agentuity](https://agentuity.dev) and [Riza.io](https://riza.io)**
-
