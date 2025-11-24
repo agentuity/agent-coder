@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { SetupManager } from './setup-manager';
+import { CONTEXT_MESSAGE_LIMIT } from './context-limit';
 
 export interface SessionState {
   id: string;
@@ -35,7 +36,7 @@ export class SessionManager {
   async initialize(): Promise<void> {
     // Ensure session directory exists
     await fs.mkdir(this.sessionDir, { recursive: true });
-    
+
     // Create project-specific session subdirectory
     const projectHash = this.hashProjectPath(this.projectPath);
     this.sessionDir = path.join(this.sessionDir, projectHash);
@@ -47,7 +48,7 @@ export class SessionManager {
     let hash = 0;
     for (let i = 0; i < path.length; i++) {
       const char = path.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
+      hash = (hash << 5) - hash + char;
       hash = hash & hash; // Convert to 32bit integer
     }
     return Math.abs(hash).toString(36);
@@ -117,9 +118,9 @@ export class SessionManager {
     });
 
     // Keep only last 50 messages to prevent file from getting too large
-    if (this.currentSession!.contextMessages.length > 50) {
+    if (this.currentSession!.contextMessages.length > CONTEXT_MESSAGE_LIMIT) {
       this.currentSession!.contextMessages =
-        this.currentSession!.contextMessages.slice(-50);
+        this.currentSession!.contextMessages.slice(-CONTEXT_MESSAGE_LIMIT);
     }
 
     await this.saveSession();

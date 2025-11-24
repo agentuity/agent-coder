@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": ["Bash(bun run format:*)", "Bash(node -e:*)", "Bash(node -p:*)"],
+    "deny": [],
+    "ask": []
+  }
+}

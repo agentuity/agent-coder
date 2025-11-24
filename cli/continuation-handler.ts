@@ -7,18 +7,90 @@ import type {
 import { ToolProxy } from './tool-proxy.js';
 import chalk from 'chalk';
 
+export interface ToolStartEvent {
+  index: number;
+  total: number;
+  toolName: string;
+  keyParameters?: string | null;
+}
+
+export interface ToolCompleteEvent {
+  toolName: string;
+  success: boolean;
+  preview?: string | null;
+  error?: string | null;
+}
+
+export interface ContinuationEvents {
+  info?: (message: string) => void;
+  warn?: (message: string) => void;
+  error?: (message: string) => void;
+  toolStart?: (event: ToolStartEvent) => void;
+  toolComplete?: (event: ToolCompleteEvent) => void;
+}
+
+const defaultEvents: Required<ContinuationEvents> = {
+  info: (message: string) => console.log(chalk.dim(message)),
+  warn: (message: string) => console.warn(chalk.yellow(message)),
+  error: (message: string) => console.error(chalk.red(message)),
+  toolStart: ({ index, total, toolName, keyParameters }: ToolStartEvent) => {
+    console.log(chalk.cyan(`[${index}/${total}] Executing: ${toolName}`));
+    if (keyParameters) {
+      console.log(chalk.dim(keyParameters));
+    }
+  },
+  toolComplete: ({ toolName, success, preview, error }: ToolCompleteEvent) => {
+    if (success) {
+      console.log(chalk.green(`✅ ${toolName} completed`));
+      if (preview) {
+        console.log(chalk.dim(preview));
+      }
+    } else {
+      console.log(
+        chalk.red(`❌ ${toolName} failed: ${error || 'Unknown error'}`)
+      );
+    }
+    console.log();
+  },
+};
+
 export class ContinuationHandler {
   private toolProxy: ToolProxy;
+  private events: Required<ContinuationEvents>;
 
-  constructor(workingDirectory?: string) {
+  constructor(workingDirectory?: string, events?: ContinuationEvents) {
+    this.events = {
+      ...defaultEvents,
+      ...(events || {}),
+    } as Required<ContinuationEvents>;
     this.toolProxy = new ToolProxy(
       {
-        info: (msg: string) => console.log(chalk.dim(`[TOOL] ${msg}`)),
-        error: (msg: string) => console.error(chalk.red(`[TOOL ERROR] ${msg}`)),
-        warn: (msg: string) => console.warn(chalk.yellow(`[TOOL WARN] ${msg}`)),
+        info: (msg: string) => this.emitInfo(`[TOOL] ${msg}`),
+        error: (msg: string) => this.emitError(`[TOOL ERROR] ${msg}`),
+        warn: (msg: string) => this.emitWarn(`[TOOL WARN] ${msg}`),
       },
       workingDirectory
     );
+  }
+
+  private emitInfo(message: string): void {
+    this.events.info(message);
+  }
+
+  private emitWarn(message: string): void {
+    this.events.warn(message);
+  }
+
+  private emitError(message: string): void {
+    this.events.error(message);
+  }
+
+  private emitToolStart(event: ToolStartEvent): void {
+    this.events.toolStart(event);
+  }
+
+  private emitToolComplete(event: ToolCompleteEvent): void {
+    this.events.toolComplete(event);
   }
 
   // Parse tool calls from agent response
@@ -66,15 +138,15 @@ export class ContinuationHandler {
         cleanedResponse: cleanedResponse.trim(),
       };
     } catch (error) {
-      console.error(chalk.red('Failed to parse tool calls:'), error);
+      this.emitError(`Failed to parse tool calls: ${error}`);
       return { hasToolCalls: false, cleanedResponse: responseText };
     }
   }
 
   // Execute tool calls and return results
   async executeToolCalls(toolCalls: ToolCall[]): Promise<ToolResult[]> {
-    console.log(
-      chalk.blue(`\n🔧 Executing ${toolCalls.length} tool call(s) locally...\n`)
+    this.emitInfo(
+      `\n🔧 Executing ${toolCalls.length} tool call(s) locally...\n`
     );
 
     const results: ToolResult[] = [];
@@ -83,45 +155,46 @@ export class ContinuationHandler {
       const toolCall = toolCalls[i];
       if (!toolCall) continue;
 
-      // Clean, concise tool execution display
-      console.log(
-        chalk.cyan(
-          `[${i + 1}/${toolCalls.length}] Executing: ${toolCall.toolName}`
-        )
-      );
-
       // Only show key parameters, not the full JSON dump
       if (toolCall.parameters) {
         const keyParams = this.getKeyParameters(
           toolCall.toolName,
           toolCall.parameters
         );
-        if (keyParams) {
-          console.log(chalk.dim(`${keyParams}`));
-        }
+        this.emitToolStart({
+          index: i + 1,
+          total: toolCalls.length,
+          toolName: toolCall.toolName,
+          keyParameters: keyParams,
+        });
+      } else {
+        this.emitToolStart({
+          index: i + 1,
+          total: toolCalls.length,
+          toolName: toolCall.toolName,
+        });
       }
 
       const result = await this.toolProxy.executeToolCall(toolCall);
       results.push(result);
 
       if (result.success) {
-        console.log(chalk.green(`✅ ${toolCall.toolName} completed`));
-        // Show brief result preview for certain tools
+        let preview: string | null = null;
         if (result.result && this.shouldShowPreview(toolCall.toolName)) {
-          const preview = this.formatPreview(result.result, toolCall.toolName);
-          if (preview) {
-            console.log(chalk.dim(`${preview}`));
-          }
+          preview = this.formatPreview(result.result, toolCall.toolName);
         }
+        this.emitToolComplete({
+          toolName: toolCall.toolName,
+          success: true,
+          preview: preview || undefined,
+        });
       } else {
-        console.log(
-          chalk.red(
-            `❌ ${toolCall.toolName} failed: ${result.error || 'Unknown error'}`
-          )
-        );
+        this.emitToolComplete({
+          toolName: toolCall.toolName,
+          success: false,
+          error: result.error || 'Unknown error',
+        });
       }
-
-      console.log(); // Add spacing between tools
     }
 
     return results;
@@ -216,7 +289,7 @@ export class ContinuationHandler {
     apiKey: string,
     continuationRequest: ContinuationRequest
   ): Promise<Response> {
-    console.log(chalk.blue('📨 Sending tool results back to agent...\n'));
+    this.emitInfo('📨 Sending tool results back to agent...\n');
 
     try {
       // Add timeout to prevent hanging
@@ -237,25 +310,19 @@ export class ContinuationHandler {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        console.error(
-          chalk.red(`HTTP Error: ${response.status} ${response.statusText}`)
-        );
+        this.emitError(`HTTP Error: ${response.status} ${response.statusText}`);
         const errorText = await response
           .text()
           .catch(() => 'Could not read error response');
-        console.error(chalk.red(`Response body: ${errorText}`));
+        this.emitError(`Response body: ${errorText}`);
 
         // Handle rate limit errors more gracefully
         if (response.status === 429) {
-          console.error(
-            chalk.yellow(
-              '⚠️  Rate limit exceeded. Please wait a moment before trying again.'
-            )
+          this.emitWarn(
+            '⚠️  Rate limit exceeded. Please wait a moment before trying again.'
           );
-          console.error(
-            chalk.yellow(
-              '💡 Try making smaller requests or wait for rate limits to reset.'
-            )
+          this.emitWarn(
+            '💡 Try making smaller requests or wait for rate limits to reset.'
           );
         }
 
@@ -265,25 +332,21 @@ export class ContinuationHandler {
       return response;
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        console.error(chalk.red('❌ Request timed out after 30 seconds'));
+        this.emitError('❌ Request timed out after 30 seconds');
         throw new Error('Request timed out');
       }
 
-      console.error(chalk.red('Fetch error details:'), error);
-      console.error(chalk.red(`URL: ${agentUrl}`));
-      console.error(
-        chalk.red(
-          `Headers: ${JSON.stringify({
-            'Content-Type': 'text/plain',
-            Authorization: `Bearer ${apiKey.substring(0, 10)}...`,
-            'x-session-id': continuationRequest.sessionId,
-          })}`
-        )
+      this.emitError(`Fetch error details: ${error}`);
+      this.emitError(`URL: ${agentUrl}`);
+      this.emitError(
+        `Headers: ${JSON.stringify({
+          'Content-Type': 'text/plain',
+          Authorization: `Bearer ${apiKey.substring(0, 10)}...`,
+          'x-session-id': continuationRequest.sessionId,
+        })}`
       );
-      console.error(
-        chalk.red(
-          `Body length: ${JSON.stringify(continuationRequest).length} chars`
-        )
+      this.emitError(
+        `Body length: ${JSON.stringify(continuationRequest).length} chars`
       );
       throw error;
     }
@@ -333,7 +396,7 @@ export class ContinuationHandler {
         cleanedResponse,
       };
     } catch (error) {
-      console.error(chalk.red('Error in tool call flow:'), error);
+      this.emitError(`Error in tool call flow: ${error}`);
       throw error;
     }
   }

@@ -39,7 +39,11 @@ export class SetupManager {
     this.globalConfigPath = path.join(this.configDir, 'config.json');
     // Store project-specific config with a hash of the project path
     const projectHash = this.hashProjectPath(projectPath);
-    this.projectConfigPath = path.join(this.configDir, 'projects', `${projectHash}.json`);
+    this.projectConfigPath = path.join(
+      this.configDir,
+      'projects',
+      `${projectHash}.json`
+    );
     this.projectAnalyzer = new ProjectAnalyzer(projectPath);
   }
 
@@ -48,7 +52,7 @@ export class SetupManager {
     let hash = 0;
     for (let i = 0; i < path.length; i++) {
       const char = path.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
+      hash = (hash << 5) - hash + char;
       hash = hash & hash; // Convert to 32bit integer
     }
     return Math.abs(hash).toString(36);
@@ -57,7 +61,7 @@ export class SetupManager {
   async initialize(): Promise<void> {
     // Ensure global config directories exist
     await this.ensureConfigDirs();
-    
+
     // Check if this is first time setup for this project
     const isFirstTime = !(await this.projectConfigExists());
 
