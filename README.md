@@ -111,7 +111,8 @@ bun run dev
 ### 2. Use the CLI
 ```bash
 # Global command (after setup)
-coder --interactive                # Interactive mode (recommended)
+coder --interactive                # Ink-powered TUI (recommended)
+coder --classic --interactive      # Legacy prompt-based UI
 coder "What files are in this project?"
 coder "Create a FastAPI server with authentication"
 
@@ -146,6 +147,9 @@ coding assistance. It features a hybrid architecture where...
 
 ## 🎨 CLI Features
 
+- **Ink TUI** – split-pane interface with streaming responses, session sidebar, and slash-command hints (default `coder --interactive`)
+- **Classic Mode** – run `coder --classic --interactive` for the original prompt-based flow
+
 ### 🔧 Interactive Commands
 - `/help` - Show available commands and examples
 - `/clear` - Clear screen and show header  
@@ -153,6 +157,8 @@ coding assistance. It features a hybrid architecture where...
 - `/context` - Show current work context and goals
 - `/diff` - Show git diff with beautiful formatting
 - `/quit` - Exit gracefully
+- `!<cmd>` - Run a local shell command without the AI
+- `/` - Autocomplete slash commands, `@` to browse files inline
 
 ### 🎯 Smart Features
 - **Project Detection** - Auto-detects git repos, package.json, pyproject.toml

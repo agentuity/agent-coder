@@ -26,12 +26,12 @@ export async function projectContextHandler(
     case 'analyze': {
       progressManager.start({
         type: 'spinner',
-        message: 'Analyzing project structure...'
+        message: 'Analyzing project structure...',
       });
-      
+
       const analyzer = new ProjectAnalyzer(process.cwd());
       const projectInfo = await analyzer.analyze();
-      
+
       progressManager.succeed('Project analysis complete');
 
       return {
@@ -44,12 +44,12 @@ export async function projectContextHandler(
     case 'get-commands': {
       progressManager.start({
         type: 'spinner',
-        message: 'Loading project commands...'
+        message: 'Loading project commands...',
       });
-      
+
       const commands = await setupManager.getSuggestedCommands();
       const config = await setupManager.getConfig();
-      
+
       progressManager.succeed('Commands loaded');
 
       return {

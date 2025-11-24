@@ -6,11 +6,11 @@
 # ------------------------------------------------
 
 # The version semver range required to run this project
-version: ">=0.0.148"
+version: '>=0.0.148'
 # The ID of the project which is automatically generated
-project_id: proj_e486cfa66f59ea194efbf702bdea36cb
+project_id: proj_07c920f6ef76a3be2f227d6d30c17427
 # The name of the project which is editable
-name: CodingAgent
+name: agent-coder-new
 # The description of the project which is editable
 description: ""
 # The development configuration for the project
@@ -69,5 +69,7 @@ bundler:
     - src/**
 # The agents that are part of this project
 agents:
-  - id: agent_3918f7879297cf4159ea3d23b54f835b
+  - # The ID of the Agent which is automatically generated
+    id: agent_6a545da0967300ece00e2cc451546250
+    # The name of the Agent which is editable
     name: CloudCoder

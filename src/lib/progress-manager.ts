@@ -17,13 +17,13 @@ export class ProgressManager {
   private currentStep: number = 0;
   private totalSteps: number = 0;
   private stepMessages: string[] = [];
-  
+
   /**
    * Start a progress indicator
    */
   start(options: ProgressOptions): void {
     this.stop(); // Clean up any existing progress
-    
+
     switch (options.type) {
       case 'spinner':
         this.startSpinner(options.message);
@@ -36,7 +36,7 @@ export class ProgressManager {
         break;
     }
   }
-  
+
   /**
    * Update progress
    */
@@ -49,7 +49,7 @@ export class ProgressManager {
       this.updateStep(value, message);
     }
   }
-  
+
   /**
    * Mark as successful
    */
@@ -66,7 +66,7 @@ export class ProgressManager {
       this.resetSteps();
     }
   }
-  
+
   /**
    * Mark as failed
    */
@@ -83,7 +83,7 @@ export class ProgressManager {
       this.resetSteps();
     }
   }
-  
+
   /**
    * Stop progress indicator
    */
@@ -100,7 +100,7 @@ export class ProgressManager {
       this.resetSteps();
     }
   }
-  
+
   /**
    * Create a multi-step progress indicator
    */
@@ -109,49 +109,61 @@ export class ProgressManager {
     this.stepMessages = steps;
     this.totalSteps = steps.length;
     this.currentStep = 0;
-    
+
     console.log(chalk.blue(`\n📋 ${steps.length} steps to complete:\n`));
     steps.forEach((step, index) => {
       console.log(chalk.gray(`   ${index + 1}. ${step}`));
     });
     console.log();
   }
-  
+
   /**
    * Mark current step as complete and move to next
    */
   nextStep(customMessage?: string): void {
     if (this.currentStep < this.totalSteps) {
       const message = customMessage || this.stepMessages[this.currentStep];
-      console.log(chalk.green(`✓ Step ${this.currentStep + 1}/${this.totalSteps}:`), message);
+      console.log(
+        chalk.green(`✓ Step ${this.currentStep + 1}/${this.totalSteps}:`),
+        message
+      );
       this.currentStep++;
-      
+
       if (this.currentStep < this.totalSteps) {
         const nextMessage = this.stepMessages[this.currentStep];
-        console.log(chalk.blue(`→ Step ${this.currentStep + 1}/${this.totalSteps}:`), chalk.dim(nextMessage));
+        console.log(
+          chalk.blue(`→ Step ${this.currentStep + 1}/${this.totalSteps}:`),
+          chalk.dim(nextMessage)
+        );
       } else {
         console.log(chalk.green('\n✨ All steps completed!\n'));
         this.resetSteps();
       }
     }
   }
-  
+
   /**
    * Create a progress bar for file operations
    */
-  createFileProgress(totalFiles: number, operation: string = 'Processing'): void {
+  createFileProgress(
+    totalFiles: number,
+    operation: string = 'Processing'
+  ): void {
     this.stop();
-    
-    this.activeBar = new cliProgress.SingleBar({
-      format: `${operation} |${chalk.cyan('{bar}')}| {percentage}% | {value}/{total} Files | ETA: {eta}s`,
-      barCompleteChar: '\u2588',
-      barIncompleteChar: '\u2591',
-      hideCursor: true,
-    }, cliProgress.Presets.shades_classic);
-    
+
+    this.activeBar = new cliProgress.SingleBar(
+      {
+        format: `${operation} |${chalk.cyan('{bar}')}| {percentage}% | {value}/{total} Files | ETA: {eta}s`,
+        barCompleteChar: '\u2588',
+        barIncompleteChar: '\u2591',
+        hideCursor: true,
+      },
+      cliProgress.Presets.shades_classic
+    );
+
     this.activeBar.start(totalFiles, 0);
   }
-  
+
   /**
    * Update file progress
    */
@@ -159,14 +171,15 @@ export class ProgressManager {
     if (this.activeBar) {
       const payload: any = {};
       if (currentFile) {
-        payload.filename = currentFile.length > 40 
-          ? '...' + currentFile.slice(-37) 
-          : currentFile;
+        payload.filename =
+          currentFile.length > 40
+            ? '...' + currentFile.slice(-37)
+            : currentFile;
       }
       this.activeBar.update(current, payload);
     }
   }
-  
+
   private startSpinner(message: string): void {
     this.activeSpinner = ora({
       text: message,
@@ -174,39 +187,42 @@ export class ProgressManager {
       color: 'blue',
     }).start();
   }
-  
+
   private startProgressBar(options: ProgressOptions): void {
     if (!options.total) return;
-    
-    const format = options.showPercentage 
+
+    const format = options.showPercentage
       ? `${options.message} |${chalk.cyan('{bar}')}| {percentage}%`
       : `${options.message} |${chalk.cyan('{bar}')}| {value}/{total}`;
-    
-    this.activeBar = new cliProgress.SingleBar({
-      format,
-      barCompleteChar: '\u2588',
-      barIncompleteChar: '\u2591',
-      hideCursor: true,
-    }, cliProgress.Presets.shades_classic);
-    
+
+    this.activeBar = new cliProgress.SingleBar(
+      {
+        format,
+        barCompleteChar: '\u2588',
+        barIncompleteChar: '\u2591',
+        hideCursor: true,
+      },
+      cliProgress.Presets.shades_classic
+    );
+
     this.activeBar.start(options.total, 0);
   }
-  
+
   private startSteps(options: ProgressOptions): void {
     if (!options.total) return;
-    
+
     this.totalSteps = options.total;
     this.currentStep = 0;
     console.log(chalk.blue(`\n${options.message} (${options.total} steps)\n`));
   }
-  
+
   private updateStep(step: number, message?: string): void {
     this.currentStep = step;
     if (message) {
       console.log(chalk.blue(`→ Step ${step}/${this.totalSteps}:`), message);
     }
   }
-  
+
   private resetSteps(): void {
     this.currentStep = 0;
     this.totalSteps = 0;

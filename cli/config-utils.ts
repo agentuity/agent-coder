@@ -25,11 +25,52 @@ interface AgentuityAgentList {
   [key: string]: AgentuityAgentInfo;
 }
 
+interface YamlConfig {
+  development?: {
+    port?: number;
+  };
+  agents?: Array<{
+    id?: string;
+    name?: string;
+  }>;
+}
+
+async function readYamlDefaults(): Promise<{
+  port: number;
+  agent?: AgentConfig;
+}> {
+  let port = 3500;
+  try {
+    const yamlContent = await readFile('agentuity.yaml', 'utf-8');
+    const config = parse(yamlContent) as YamlConfig;
+    if (config?.development?.port) {
+      port = config.development.port;
+    }
+
+    const firstAgent = config?.agents?.[0];
+    if (firstAgent?.id) {
+      return {
+        port,
+        agent: {
+          id: firstAgent.id,
+          name: firstAgent.name || 'CloudCoder',
+        },
+      };
+    }
+  } catch {
+    // Ignore YAML read errors; we'll fall back to defaults
+  }
+
+  return { port };
+}
+
 // Get agent configurations using Agentuity CLI
 export async function getAgentConfigs(): Promise<{
   cloudCoder: AgentConfig;
   port: number;
 }> {
+  const yamlDefaults = await readYamlDefaults();
+
   try {
     // Use official Agentuity CLI to get agent list
     const { stdout } = await execAsync('agentuity agent list --format json');
@@ -54,21 +95,21 @@ export async function getAgentConfigs(): Promise<{
       );
     }
 
-    // Get port from agentuity.yaml if available
-    let port = 3500;
-    try {
-      const yamlContent = await readFile('agentuity.yaml', 'utf-8');
-      const config = parse(yamlContent);
-      port = config.development?.port || 3500;
-    } catch {
-      // Use default port if YAML not readable
-    }
-
     return {
       cloudCoder: { id: cloudCoder.id, name: cloudCoder.name },
-      port,
+      port: yamlDefaults.port,
     };
   } catch (error) {
+    if (yamlDefaults.agent) {
+      console.warn(
+        'Agentuity CLI unavailable; using agent info from agentuity.yaml.'
+      );
+      return {
+        cloudCoder: yamlDefaults.agent,
+        port: yamlDefaults.port,
+      };
+    }
+
     // Fallback to CLI check if JSON parsing failed
     if (error instanceof Error && error.message.includes('JSON')) {
       console.warn(
@@ -85,7 +126,7 @@ export async function getAgentConfigs(): Promise<{
         id: 'agent_3918f7879297cf4159ea3d23b54f835b',
         name: 'CloudCoder',
       },
-      port: 3500,
+      port: yamlDefaults.port,
     };
   }
 }

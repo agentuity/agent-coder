@@ -331,65 +331,58 @@ export default async function CloudAgent(
       }
     }
 
-    // Handle continuation differently
+    // Handle continuation differently - feed tool results back to Claude
     if (isContinuation && parsedData) {
-      // Intelligently process tool results
-      const errors = toolResults.filter((r) => !r.success);
-      const successes = toolResults.filter((r) => r.success);
-
-      let responseText = '';
-
-      // Only show errors prominently
-      if (errors.length > 0) {
-        responseText += `❌ ${errors.length} tool(s) failed:\n`;
-        for (const err of errors) {
-          responseText += `• ${err.id}: ${err.error}\n`;
-        }
-        responseText += '\n';
-      }
-
-      // Summarize successful results concisely
-      if (successes.length > 0) {
-        const fileReads = successes.filter((r) => r.id.includes('read_file'));
-        const fileWrites = successes.filter((r) => r.id.includes('write_file'));
-        const commands = successes.filter((r) => r.id.includes('run_command'));
-        const searches = successes.filter(
-          (r) => r.id.includes('grep_search') || r.id.includes('find_files')
-        );
-
-        if (fileReads.length > 0)
-          responseText += `📄 Read ${fileReads.length} file(s)\n`;
-        if (fileWrites.length > 0)
-          responseText += `✏️  Modified ${fileWrites.length} file(s)\n`;
-        if (commands.length > 0)
-          responseText += `⚡ Executed ${commands.length} command(s)\n`;
-        if (searches.length > 0) {
-          const totalMatches = searches.reduce(
-            (sum, s) => sum + (s.result?.split('\n').length || 0),
-            0
-          );
-          responseText += `🔍 Found ${totalMatches} search result(s)\n`;
-        }
-      }
-
-      responseText += '\nTask completed.';
-
-      // Add assistant response to context
-      conversationContext.messages.push({
-        role: 'assistant',
-        content: responseText,
-        timestamp: Date.now(),
-      });
-
-      // Save updated context
-      await ctx.kv.set(
-        'default',
-        contextKey,
-        JSON.stringify(conversationContext),
-        { ttl: 3600 * 24 * 7 }
+      ctx.logger.info(
+        `Processing continuation with ${toolResults.length} tool results`
       );
 
-      return await resp.text(responseText);
+      // Convert tool results into tool result messages for Claude
+      // We need to add the tool results to the conversation
+      // First, find or reconstruct the last assistant message with tool calls
+      const toolResultContent = toolResults.map((result) => {
+        if (result.success) {
+          return {
+            type: 'tool-result' as const,
+            toolCallId: result.id,
+            toolName: result.id.split('_')[0] || 'unknown', // Extract tool name from ID
+            result: result.result || 'Success',
+          };
+        } else {
+          return {
+            type: 'tool-result' as const,
+            toolCallId: result.id,
+            toolName: result.id.split('_')[0] || 'unknown',
+            result: `Error: ${result.error}`,
+            isError: true,
+          };
+        }
+      });
+
+      ctx.logger.info(
+        `Converted ${toolResultContent.length} tool results for Claude`
+      );
+
+      // For continuation, we don't execute tools again - we just pass results
+      // The last message should have been the assistant's tool call request
+      // Now we provide the results and let Claude respond
+      const continuationMessage = `Tool execution results:\n\n${toolResults
+        .map((r) => {
+          if (r.success) {
+            return `✅ ${r.id}:\n${r.result || 'Success'}`;
+          } else {
+            return `❌ ${r.id}:\n${r.error || 'Failed'}`;
+          }
+        })
+        .join(
+          '\n\n'
+        )}\n\nBased on these results, please provide your response to the user.`;
+
+      conversationContext.messages.push({
+        role: 'user',
+        content: continuationMessage,
+        timestamp: Date.now(),
+      });
     }
 
     // Prepare messages for AI - filter out empty content
